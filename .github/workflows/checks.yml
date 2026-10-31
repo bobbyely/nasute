@@ -1,0 +1,18 @@
+# Runs the checks on every push and pull request, on each supported Python. No network, no model.
+name: checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -B tests/nasute_test.py   # also checks report.js with node, which the runner has
+      - run: pip install . && nasute --help   # the package installs and the command runs

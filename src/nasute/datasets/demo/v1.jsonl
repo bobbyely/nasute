@@ -1,0 +1,11 @@
+{"dataset": "demo", "target": "demo", "about": "Ten questions about a made-up community garden handbook (handbook.md, beside this file). Two cannot be answered from it: the right reply is to say so. Written for Nasute; MIT, like the code."}
+{"id": "opening-time", "question": "What time does the Willowbank Community Garden open?", "reference": "7 am", "sources": ["Opening hours"], "tags": ["rules"], "difficulty": "easy"}
+{"id": "full-plot-fee", "question": "How much does a full plot cost each year at Willowbank?", "reference": "$40 a year", "sources": ["Fees"], "tags": ["money"], "difficulty": "easy"}
+{"id": "fee-late", "question": "What happens to a Willowbank plot if the fee is not paid by 1 April?", "reference": "The plot holder loses the plot, and it is offered to the waiting list.", "sources": ["Fees"], "tags": ["money"], "difficulty": "medium"}
+{"id": "summer-hoses", "question": "When can hoses be used at Willowbank in summer?", "reference": "Only before 9 am and after 5 pm, from December to February.", "sources": ["Water"], "tags": ["rules"], "difficulty": "medium"}
+{"id": "compost-not", "question": "Which foods must never go in the Willowbank compost?", "reference": "Meat, dairy and citrus", "sources": ["Compost"], "tags": ["rules"], "difficulty": "easy"}
+{"id": "working-bees", "question": "When are Willowbank's working bees held, and how many must a plot holder attend each year?", "reference": "The first Saturday of each month, 9 am to noon; at least four a year.", "sources": ["Working bees"], "tags": ["people"], "difficulty": "hard"}
+{"id": "unused-plot", "question": "How long can a Willowbank plot go unworked before it is offered to someone else?", "reference": "12 weeks", "sources": ["Unused plots"], "tags": ["rules"], "difficulty": "medium"}
+{"id": "hive-distance", "question": "How far from the Willowbank beehive should people stay?", "reference": "At least 3 metres", "sources": ["Bees"], "tags": ["safety"], "difficulty": "easy"}
+{"id": "greenhouse-hire", "question": "How much does it cost to hire the Willowbank greenhouse?", "reference": "", "sources": [], "tags": ["unanswerable"], "difficulty": "medium", "answerable": false}
+{"id": "founded", "question": "In what year was the Willowbank Community Garden founded?", "reference": "", "sources": [], "tags": ["unanswerable"], "difficulty": "medium", "answerable": false}

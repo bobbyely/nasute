@@ -1,0 +1,149 @@
+# Settings for nasute.py. Copy to nasute.toml and change what you need.
+# Every setting has a default in the code, so this file is optional.
+
+# Folders holding datasets/<name>/v<N>.jsonl. Relative folders start from this file's folder.
+# Put questions about private documents in a folder outside the repo.
+datasets = ["datasets"]
+
+# Where each run is saved (one folder per run, named by its UTC time).
+runs = "data/runs"
+
+# Where the static report goes (index.html and its pages). Give it a folder of its own: it is rewritten.
+report = "data/report"
+
+# The dataset `run` asks when you give no --dataset.
+dataset = ""
+
+# The dataset `judge-check` uses: answers with known faults, to test the judge (see docs/how-to/judge-check.md).
+# Empty: Nasute picks the one dataset whose header says "target": "judge", and stops if there is not exactly one.
+# To switch off the automatic check before a run, set judge_check = false.
+judge_set = ""
+
+# How many retrieved sources count for hit rate and recall.
+k = 5
+
+# Seconds to wait for one answer before giving up on that question.
+timeout = 180
+
+# Ask only the first N questions. 0 means all of them.
+limit = 0
+
+# Times each question is asked. More than 1 shows how much answers wobble, and makes the error bars honest
+# (repeats of one question are not independent). Each repeat is another trip to the language model.
+repeats = 1
+
+# A question counts as answered well when its correctness is at least this. Used for "passes every time"
+# (pass^k), for failure causes, and for measured difficulty.
+pass_at = 0.75
+
+# The score difference the power line asks about: how many questions are needed to see a change this big
+# (5% false alarms, 80% chance of seeing it).
+detect = 0.05
+
+# In "compare", a question whose score fell by more than this "got worse" (and rose, "got better").
+# Also: the least that two repeats of one question must differ by to be listed as flaky.
+worse_by = 0.2
+
+# Measured difficulty. Once a question has this many attempts (across all runs of the same dataset file),
+# it is flagged if it was labelled "easy" but passed less often than mislabel_easy_below, or labelled
+# "hard" but passed more often than mislabel_hard_above.
+min_attempts = 5
+mislabel_easy_below = 0.5
+mislabel_hard_above = 0.9
+
+# Temperature sent to the judge, and to the system under test if it can use it (some fix their own).
+# At 0 the judge gives the same reply every time, so repeats then differ only through the system itself;
+# a warning says so when repeats is above 1. Each repeat also sends its own seed (its number: 1, 2, 3).
+temperature = 0.0
+
+# Seconds to wait after every call to the system and every judge call. Spares shared hardware: the box's
+# language model runs flat out otherwise, and the processor gets hot.
+pause = 0
+
+# Also wait, between calls, while the CPU is hotter than this many degrees C. 0 = off. Linux only.
+max_temp = 0
+
+# Questions run at once. Leave at 1 for a language model that does one request at a time (llama.cpp with one slot does).
+# Raise it only for an endpoint that takes parallel requests (a cloud service). Results are still saved in
+# dataset order. `pause` applies after each call, per worker.
+workers = 1
+
+# If more than this share of answers could not be judged (judge errors), the run is marked incomplete.
+# Judge errors are never counted against the system.
+max_judge_errors = 0.1
+
+# true: run judge-check first, so this run records a fresh judge reliability. Meant for profiles.
+judge_check = false
+
+[judge]
+# Any OpenAI-compatible address that ends in /v1. Keep it separate from the system under test,
+# so you can swap the judge without touching the thing you measure.
+url = "http://127.0.0.1:8080/v1"
+# Leave empty to use the first model the address lists.
+model = ""
+# Seconds to wait for one judging.
+timeout = 240
+# "quick": one request per answer; cheap. "claims": the answer and the reference are split into single
+# facts and each is checked (RAGAS style); about twice as slow, and shows the facts behind every score.
+# Either way the judge only says yes or no about claims; the code counts them.
+mode = "quick"
+# false: send "cache_prompt": false, so the model does not reuse earlier prompts. Questions cannot influence
+# each other, and timings are honest (the same prompt took 35 s cold and 3 s cached). llama.cpp honours it;
+# other OpenAI-compatible servers ignore the field. true is faster: fine for a quick look.
+cache = false
+# Tries after a judge reply that fails (timeout, unreadable JSON), with a short wait. Then that answer is left
+# out of the judged scores (never counted against the system). A connection that cannot be made at all waits
+# 5, 15 and 45 seconds, then gives up; unreachable on 3 questions in a row stops the run.
+retries = 2
+# Request headers for a judge that needs a key, e.g. { Authorization = "env:JUDGE_AUTH" }. A value "env:NAME" is read from the
+# environment variable NAME, so the key never sits in this file. Runs record the header names only.
+headers = {}
+
+# Systems under test, one table each: [targets.<name>]. The name is yours. A dataset's header says which target it is for;
+# `run --dataset X --target Y` asks the same questions of target Y instead. Settings differ by kind:
+#   kind = "http"    any JSON endpoint (targets/http.py), below
+#   kind = "my_target:ask"  your own Python function; the module may sit next to this file (docs/how-to/add-a-target.md)
+# label, in any target: optional name the report shows instead of the target's id (tiles, headings, the Systems tab).
+# model_url, in any target: optional /v1 address that names the model that writes the answers. Recorded in each run.
+
+[targets.web]
+kind = "http"
+url = "http://127.0.0.1:8000/chat"
+method = "POST"
+# headers: values "env:NAME" are read from the environment variable NAME.
+headers = { Authorization = "env:MY_API_KEY" }
+# The JSON body. {question} is replaced in every string (quotes and newlines are escaped for you). Not sent for GET:
+# put {question} in url instead.
+request = { messages = [{ role = "user", content = "{question}" }] }
+# Paths into the reply: $.a.b, $.a[0].b, $.a[*].b (that subset only). answer is required; sources and extracts are optional.
+answer = "$.choices[0].message.content"
+sources = ""
+# links: optional, a path to the address of each source, in the same order as sources (one for every source: if the counts differ,
+# no links are used). The report makes a source a link only for an http(s) address or one starting with "/"; anything else stays plain text.
+links = ""
+extracts = ""
+# timeout = 60   # seconds; the global timeout is used if this is not set
+
+# Profiles: a table of any of the settings above, merged over them by `nasute.py run --profile NAME`.
+# Options on the command line (--limit, --repeats, --mode) still win.
+
+# "Did I break anything?" after a change. A few minutes.
+[profiles.smoke]
+limit = 3
+repeats = 1
+judge_check = false
+[profiles.smoke.judge]
+mode = "quick"
+cache = true
+
+# Everything, three times each, the careful judge, a fresh judge check first. For overnight.
+# The judge check needs a judge set (judge_set above, or one dataset whose target is "judge"); without one, set judge_check = false.
+# All questions, including the ones with no answer, from the newest dataset version.
+[profiles.deep]
+limit = 0
+repeats = 3
+judge_check = true
+pause = 5
+[profiles.deep.judge]
+mode = "claims"
+cache = false

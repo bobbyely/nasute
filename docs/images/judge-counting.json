@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How the judge's yes and no become scores",
+    "subtitle": "The judge never gives a number; the code counts. Claims mode.",
+    "output": "docs/images/judge-counting.html",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "dashed": {
+          "label": "Text the system read"
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "label": "Inputs"
+    },
+    {
+      "label": "Split into claims"
+    },
+    {
+      "label": "Judge: yes or no only"
+    },
+    {
+      "label": "Code counts, not the judge"
+    },
+    {
+      "label": "Score"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "answer",
+      "type": "external",
+      "label": "Answer",
+      "sublabel": "what the system said",
+      "stage": 0,
+      "row": 1
+    },
+    {
+      "id": "reference",
+      "type": "external",
+      "label": "Reference",
+      "sublabel": "the right answer",
+      "stage": 0,
+      "row": 3
+    },
+    {
+      "id": "aclaims",
+      "type": "cloud",
+      "label": "Answer claims",
+      "sublabel": "single facts",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "extracts",
+      "type": "external",
+      "label": "Extracts",
+      "sublabel": "what the system read",
+      "stage": 1,
+      "row": 2
+    },
+    {
+      "id": "rfacts",
+      "type": "cloud",
+      "label": "Reference facts",
+      "sublabel": "single facts",
+      "stage": 1,
+      "row": 4
+    },
+    {
+      "id": "chk-ext",
+      "type": "cloud",
+      "label": "Backed by extracts?",
+      "sublabel": "claims vs extracts",
+      "stage": 2,
+      "row": 0
+    },
+    {
+      "id": "chk-ref",
+      "type": "cloud",
+      "label": "In the reference?",
+      "sublabel": "claims vs reference",
+      "stage": 2,
+      "row": 1
+    },
+    {
+      "id": "chk-ans",
+      "type": "cloud",
+      "label": "In the answer?",
+      "sublabel": "facts vs answer",
+      "stage": 2,
+      "row": 3
+    },
+    {
+      "id": "chk-rext",
+      "type": "cloud",
+      "label": "Backed by extracts?",
+      "sublabel": "facts vs extracts",
+      "stage": 2,
+      "row": 4
+    },
+    {
+      "id": "faith",
+      "type": "backend",
+      "label": "Faithfulness",
+      "sublabel": "backed / claims",
+      "stage": 3,
+      "row": 0
+    },
+    {
+      "id": "prec",
+      "type": "backend",
+      "label": "Precision",
+      "sublabel": "matching / claims",
+      "stage": 3,
+      "row": 1
+    },
+    {
+      "id": "rec",
+      "type": "backend",
+      "label": "Recall",
+      "sublabel": "found / facts",
+      "stage": 3,
+      "row": 3
+    },
+    {
+      "id": "crec",
+      "type": "backend",
+      "label": "Context recall",
+      "sublabel": "backed / facts",
+      "stage": 3,
+      "row": 4
+    },
+    {
+      "id": "f1",
+      "type": "database",
+      "label": "Answer correctness",
+      "sublabel": "F1 = 2PR / (P + R)",
+      "stage": 4,
+      "row": 2
+    },
+    {
+      "id": "quick",
+      "type": "frontend",
+      "label": "Quick mode",
+      "sublabel": "agreeing claims / claims",
+      "tag": "one call, no context recall",
+      "stage": 4,
+      "row": 4
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-a",
+      "from": "answer",
+      "to": "aclaims",
+      "label": "split"
+    },
+    {
+      "id": "f-r",
+      "from": "reference",
+      "to": "rfacts",
+      "label": "split"
+    },
+    {
+      "id": "f-ac-ext",
+      "from": "aclaims",
+      "to": "chk-ext",
+      "label": "claims"
+    },
+    {
+      "id": "f-ac-ref",
+      "from": "aclaims",
+      "to": "chk-ref",
+      "label": "claims"
+    },
+    {
+      "id": "f-ex-1",
+      "from": "extracts",
+      "to": "chk-ext",
+      "label": "read",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-ex-2",
+      "from": "extracts",
+      "to": "chk-rext",
+      "label": "read",
+      "variant": "dashed"
+    },
+    {
+      "id": "f-rf-ans",
+      "from": "rfacts",
+      "to": "chk-ans",
+      "label": "facts"
+    },
+    {
+      "id": "f-rf-ext",
+      "from": "rfacts",
+      "to": "chk-rext",
+      "label": "facts"
+    },
+    {
+      "id": "f-faith",
+      "from": "chk-ext",
+      "to": "faith",
+      "label": "yes / no"
+    },
+    {
+      "id": "f-prec",
+      "from": "chk-ref",
+      "to": "prec",
+      "label": "yes / no"
+    },
+    {
+      "id": "f-rec",
+      "from": "chk-ans",
+      "to": "rec",
+      "label": "yes / no"
+    },
+    {
+      "id": "f-crec",
+      "from": "chk-rext",
+      "to": "crec",
+      "label": "yes / no"
+    },
+    {
+      "id": "f-p",
+      "from": "prec",
+      "to": "f1",
+      "label": "P",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-rr",
+      "from": "rec",
+      "to": "f1",
+      "label": "R",
+      "variant": "emphasis"
+    }
+  ]
+}

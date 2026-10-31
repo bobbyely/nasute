@@ -1,0 +1,4 @@
+{"dataset": "example", "target": "mine", "about": "Three made-up examples. Replace them with questions whose answers you know."}
+{"id": "capital-france", "question": "What is the capital city of France?", "reference": "Paris", "tags": ["geography"], "difficulty": "easy"}
+{"id": "water-boils", "question": "At what temperature in degrees Celsius does water boil at sea level?", "reference": "100 degrees Celsius", "tags": ["science"], "difficulty": "easy"}
+{"id": "made-up-treaty", "question": "In what year was the Treaty of Zorblax signed?", "reference": "", "tags": ["unanswerable"], "difficulty": "medium", "answerable": false}

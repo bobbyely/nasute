@@ -1,0 +1,275 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "A Nasute run, start to finish",
+    "output": "docs/images/run-journey.html",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "backend": {
+          "label": "Nasute code"
+        },
+        "external": {
+          "label": "System under test"
+        },
+        "cloud": {
+          "label": "Judge model"
+        },
+        "database": {
+          "label": "Saved file"
+        },
+        "security": {
+          "label": "Error branch"
+        },
+        "frontend": {
+          "visible": false
+        },
+        "messagebus": {
+          "visible": false
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "setup",
+      "label": "Set up"
+    },
+    {
+      "id": "ask",
+      "label": "Ask"
+    },
+    {
+      "id": "judge",
+      "label": "Judge"
+    },
+    {
+      "id": "score",
+      "label": "Score and save"
+    },
+    {
+      "id": "report",
+      "label": "Report"
+    },
+    {
+      "id": "errors",
+      "label": "Errors",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "settings",
+    "dataset",
+    "ask",
+    "answer",
+    "judge",
+    "count",
+    "rows",
+    "summary",
+    "compare",
+    "report"
+  ],
+  "nodes": [
+    {
+      "id": "settings",
+      "lane": "setup",
+      "col": 0,
+      "type": "backend",
+      "label": "Settings + profile",
+      "sublabel": "smoke or deep"
+    },
+    {
+      "id": "dataset",
+      "lane": "setup",
+      "col": 1,
+      "type": "backend",
+      "label": "Load dataset",
+      "sublabel": "version + fingerprint"
+    },
+    {
+      "id": "ask",
+      "lane": "ask",
+      "col": 1,
+      "type": "external",
+      "label": "Ask the target",
+      "sublabel": "each question x repeats"
+    },
+    {
+      "id": "answer",
+      "lane": "ask",
+      "col": 2,
+      "type": "external",
+      "label": "Answer",
+      "sublabel": "sources + extracts"
+    },
+    {
+      "id": "judge",
+      "lane": "judge",
+      "col": 2,
+      "type": "cloud",
+      "label": "The judge",
+      "sublabel": "yes or no per claim"
+    },
+    {
+      "id": "judgeerr",
+      "lane": "judge",
+      "col": 3,
+      "type": "security",
+      "label": "Judge error",
+      "sublabel": "retried, then left out",
+      "tag": "never held against it"
+    },
+    {
+      "id": "count",
+      "lane": "score",
+      "col": 2,
+      "type": "backend",
+      "label": "Count verdicts",
+      "sublabel": "into scores"
+    },
+    {
+      "id": "rows",
+      "lane": "score",
+      "col": 3,
+      "type": "database",
+      "label": "Save every row",
+      "sublabel": "results.jsonl"
+    },
+    {
+      "id": "summary",
+      "lane": "score",
+      "col": 4,
+      "type": "database",
+      "label": "Summarise",
+      "sublabel": "causes, consistency",
+      "tag": "means, clustered SE, 95% CI"
+    },
+    {
+      "id": "compare",
+      "lane": "score",
+      "col": 5,
+      "type": "backend",
+      "label": "Compare to baseline",
+      "sublabel": "gain, drop, noise or n/a",
+      "tag": "paired verdict"
+    },
+    {
+      "id": "report",
+      "lane": "report",
+      "col": 5,
+      "type": "database",
+      "label": "Report pages",
+      "sublabel": "overview, suite, run, compare"
+    },
+    {
+      "id": "syserr",
+      "lane": "errors",
+      "col": 1,
+      "type": "security",
+      "label": "System error",
+      "sublabel": "scored 0, strict"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-settings",
+      "from": "settings",
+      "to": "dataset"
+    },
+    {
+      "id": "e-dataset",
+      "from": "dataset",
+      "to": "ask",
+      "label": "next question"
+    },
+    {
+      "id": "e-ask",
+      "from": "ask",
+      "to": "answer",
+      "label": "reply"
+    },
+    {
+      "id": "e-answer",
+      "from": "answer",
+      "to": "judge"
+    },
+    {
+      "id": "e-judge",
+      "from": "judge",
+      "to": "count",
+      "label": "verdicts"
+    },
+    {
+      "id": "e-count",
+      "from": "count",
+      "to": "rows"
+    },
+    {
+      "id": "e-rows",
+      "from": "rows",
+      "to": "summary"
+    },
+    {
+      "id": "e-summary",
+      "from": "summary",
+      "to": "compare"
+    },
+    {
+      "id": "e-syserr",
+      "from": "ask",
+      "to": "syserr",
+      "label": "no answer",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-syssave",
+      "from": "syserr",
+      "to": "rows",
+      "label": "saved with 0s",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-judgeerr",
+      "from": "judge",
+      "to": "judgeerr",
+      "label": "fails",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-judgesave",
+      "from": "judgeerr",
+      "to": "rows",
+      "label": "left out",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e-compare",
+      "from": "compare",
+      "to": "report"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Two kinds of error",
+      "items": [
+        "System error: the target gave no answer. Counted against it, as 0.",
+        "Judge error: the marker failed. Left out, never counted against the target."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Compare verdicts",
+      "items": [
+        "Verdict: real gain, real drop, within noise, or not comparable",
+        "Not comparable: other suite, profile or questions, or a run stopped early; another judge model: marked scores only"
+      ]
+    }
+  ]
+}

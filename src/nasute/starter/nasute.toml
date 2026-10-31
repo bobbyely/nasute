@@ -1,0 +1,44 @@
+# Your Nasute settings. Written by `nasute init`. Every option is explained in nasute.example.toml
+# (in the folder that holds nasute.py). Run nasute from this folder and it finds this file.
+
+datasets = ["datasets"]   # folders of datasets/<name>/v<N>.jsonl
+runs = "runs"             # where each run is saved
+report = "report"         # the static report: open report/index.html in a browser
+dataset = "example"       # what `nasute run` asks when you give no --dataset
+
+# The system you are testing. The name ("mine") is yours: a dataset's header says which target it is for.
+# Change url, request and the paths to fit your endpoint. This one sends {"question": "..."} and
+# reads {"answer": "..."} back. For a chat API see docs/how-to/add-a-target.md.
+[targets.mine]
+kind = "http"
+url = "http://127.0.0.1:8000/ask"
+# method = "POST"
+# headers = { Authorization = "env:MY_API_KEY" }   # "env:NAME" reads the secret from the environment variable NAME
+request = { question = "{question}" }               # {question} is replaced in every string
+answer = "$.answer"                                 # where the answer is in the reply
+# sources = "$.sources[*].title"                    # optional: titles of the pages the system used
+# extracts = "$.sources[*].text"                    # optional: the text it read, so faithfulness can be marked
+# model_url = "http://127.0.0.1:8000/v1"            # optional: a /v1 address that names the model, recorded in each run
+
+# The marker: any OpenAI-compatible address that ends in /v1. It reads each answer and says yes or no
+# about single claims. It is best a different, stronger model than the one you are testing.
+[judge]
+url = "http://127.0.0.1:8080/v1"
+model = ""        # empty: the first model the address lists
+# headers = { Authorization = "env:JUDGE_API_KEY" }  # for a hosted judge; the value is "Bearer <key>"
+mode = "quick"
+
+# `nasute run --profile smoke`: a quick look. `--profile deep`: every question three times, careful judge.
+[profiles.smoke]
+limit = 3
+[profiles.smoke.judge]
+mode = "quick"
+cache = true
+
+[profiles.deep]
+limit = 0
+repeats = 3
+pause = 5          # seconds after every call: spares a shared machine
+judge_check = false # switch on once you have a judge set (see docs/how-to/judge-check.md)
+[profiles.deep.judge]
+mode = "claims"

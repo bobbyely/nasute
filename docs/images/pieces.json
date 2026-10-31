@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "The pieces of Nasute",
+    "output": "docs/images/pieces.html",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "backend": { "label": "Nasute code and settings" },
+        "external": { "label": "System under test" },
+        "cloud": { "label": "Judge model" },
+        "database": { "label": "Saved files" },
+        "frontend": { "label": "Report" },
+        "security": { "visible": false },
+        "messagebus": { "visible": false }
+      }
+    }
+  },
+  "components": [
+    { "id": "dataset", "type": "database", "label": "Dataset", "sublabel": "versioned; names its target", "pos": [40, 40], "size": [170, 60] },
+    { "id": "target", "type": "external", "label": "Target", "sublabel": "http or a Python function", "pos": [40, 260], "size": [190, 60] },
+    { "id": "suite", "type": "backend", "label": "Suite", "sublabel": "dataset @ target", "pos": [330, 150], "size": [150, 60] },
+    { "id": "profile", "type": "backend", "label": "Profile", "sublabel": "smoke, deep", "pos": [330, 330], "size": [150, 60] },
+    { "id": "run", "type": "database", "label": "Run", "sublabel": "results + summary", "pos": [600, 150], "size": [150, 60] },
+    { "id": "baseline", "type": "database", "label": "Baseline", "sublabel": "one per suite", "pos": [600, 10], "size": [150, 60] },
+    { "id": "judge", "type": "cloud", "label": "Judge", "sublabel": "OpenAI-compatible model", "pos": [600, 330], "size": [180, 60], "tag": "quick or claims" },
+    { "id": "check", "type": "backend", "label": "judge-check", "sublabel": "measures the judge", "pos": [880, 330], "size": [160, 60] },
+    { "id": "report", "type": "frontend", "label": "Report", "sublabel": "static pages", "pos": [880, 150], "size": [150, 60] }
+  ],
+  "connections": [
+    { "id": "c-dataset", "from": "dataset", "to": "suite", "label": "questions" },
+    { "id": "c-target", "from": "target", "to": "suite", "label": "asked" },
+    { "id": "c-suite", "from": "suite", "to": "run", "label": "x profile", "variant": "emphasis" },
+    { "id": "c-profile", "from": "profile", "to": "run", "label": "settings" },
+    { "id": "c-judge", "from": "run", "to": "judge", "label": "yes/no per claim" },
+    { "id": "c-baseline", "from": "run", "to": "baseline", "label": "compared with", "variant": "dashed" },
+    { "id": "c-report", "from": "run", "to": "report", "label": "results + summary", "variant": "emphasis" },
+    { "id": "c-check", "from": "check", "to": "judge", "label": "measures", "variant": "dashed" }
+  ]
+}
