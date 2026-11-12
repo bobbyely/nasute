@@ -113,10 +113,19 @@ def question_problems(q, target):
         return ["not an object"]
     need = N.REQUIRED.get(target, N.REQUIRED_DEFAULT)
     out = [f"missing field(s): {', '.join(sorted(need - q.keys()))}"] * bool(need - q.keys())
-    if target in N.REQUIRED:   # a judge set has its own shape; the rest is checked when it is used
-        return out
     text = lambda k: [f"{k!r} must be text"] * (k in q and not isinstance(q[k], str))
     lists = lambda k: [f"{k!r} must be a list of text"] * (k in q and not (isinstance(q[k], list) and all(isinstance(x, str) for x in q[k])))
+    if target in N.REQUIRED:   # a judge set: answers with known faults, and the band each score should fall in
+        band = lambda v: isinstance(v, list) and len(v) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x <= 1 for x in v) and v[0] <= v[1]
+        e = q.get("expect")
+        out += text("id") + text("kind") + text("question") + text("reference") + text("answer") + lists("extracts")
+        out += ["'answerable' must be true or false"] * ("answerable" in q and not isinstance(q["answerable"], bool))
+        if "expect" in q and not (isinstance(e, dict) and e):
+            out.append("'expect' must be a table of scores, such as {\"correctness\": [0.75, 1]}")
+        elif isinstance(e, dict):
+            out += [f"'expect' has no score called {m!r}" for m in e if m not in N.GENERATION + ["abstention"]]
+            out += [f"'expect' {m}: must be [low, high], two numbers from 0 to 1, low first" for m, v in e.items() if not band(v)]
+        return out
     out += text("id") + text("question") + text("reference") + lists("sources") + lists("tags")
     out += [f"'id' must not be empty"] * (q.get("id") == "") + [f"'question' must not be empty"] * (q.get("question") == "")
     if "difficulty" in q and q["difficulty"] not in DIFFICULTIES:
@@ -332,6 +341,7 @@ def runs_export(cfg, text, suite, file):
 def runs_label(cfg, text, label):
     run_id, _ = resolve(cfg, text)
     N.set_label(cfg, run_id, label)
+    N.report(cfg)   # the charts and run tables show labels
     say(f"{run_id}: " + (f"labelled \"{label}\"" if label else "label removed"))
 
 
@@ -342,6 +352,7 @@ def runs_baseline(cfg, text):
     meta = N.run_meta(cfg)
     meta["baselines"][N.suite_of(sums[run_id])] = run_id
     N.save_meta(cfg, meta)
+    N.report(cfg)   # the report measures against the baseline
     say(f"{run_id} is now the baseline of {N.suite_of(sums[run_id])}. Compare and the report measure against it.")
 
 
@@ -359,6 +370,7 @@ def runs_delete(cfg, text, yes=False):
     if meta["baselines"].get(suite) == run_id:
         del meta["baselines"][suite]
     N.save_meta(cfg, meta)
+    N.report(cfg)   # else the report keeps the run's page and copies of its results, and serve goes on showing them
     say(f"deleted {run_id}")
 
 

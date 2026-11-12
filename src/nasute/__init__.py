@@ -31,6 +31,7 @@ import csv
 import hashlib
 import importlib
 import importlib.metadata
+import itertools
 import os
 import json
 import logging
@@ -444,8 +445,9 @@ def consistency(rows, cfg):
     return {"questions": len(got), "pass_all": round(sum(min(g) >= cfg["pass_at"] for g in got.values()) / len(got), 4), "left_out": left_out, "flaky": flaky[:5]}
 
 
-def why_failed(rows, cfg):
-    """Why a question with low correctness failed. rows: its repeats. -> cause or None.
+def why_failed(rows, cfg, cited=True):
+    """Why a question with low correctness failed. rows: its repeats; cited: the run's system named any source at all
+    (else retrieval was not measured, as in measured(), and a chat model is never blamed for it). -> cause or None.
     system: the target errored. retrieval: right source not found. judge?: the marks disagree with each
     other. generation: the right source was found and the answer is still wrong."""
     if any(r["error"] for r in rows):
@@ -453,7 +455,7 @@ def why_failed(rows, cfg):
     good = lambda m: [r["scores"][m] for r in rows if r["scores"][m] is not None]
     if not good("correctness") or fmean(good("correctness")) >= cfg["pass_at"]:
         return None
-    if good("hit") and fmean(good("hit")) < 0.5:
+    if cited and good("hit") and fmean(good("hit")) < 0.5:
         return "retrieval"
     # faithful to the right source yet fully wrong; or most of the answer matches the reference yet it scores low
     if (good("faithfulness") and fmean(good("faithfulness")) >= cfg["pass_at"] and fmean(good("correctness")) == 0) or \
@@ -463,10 +465,10 @@ def why_failed(rows, cfg):
 
 
 def causes(rows, cfg):
-    out = []
+    out, cited = [], any(r.get("sources") for r in rows)
     for i in dict.fromkeys(r["id"] for r in rows):
         mine = [r for r in rows if r["id"] == i]
-        if c := why_failed(mine, cfg):
+        if c := why_failed(mine, cfg, cited):
             out.append({"id": i, "cause": c, "why": next((r["error"] or r["reasons"].get("correctness", "") for r in mine), "")})
     return {"counts": {c: sum(x["cause"] == c for x in out) for c in ("retrieval", "generation", "judge?", "system")}, "questions": out}
 
@@ -898,14 +900,31 @@ def check_scores(items, got):
     return out, wrong
 
 
+def new_run_folder(cfg, prefix=""):
+    """-> (run id, its new folder). The id is the UTC second; a second run started in the same second gets -2, -3 and so on.
+    mkdir without exist_ok is the lock: of two runs racing for one name, only one gets it.
+    shortcut: ids sort as text, so a 10th run in one second sorts before the 2nd; change to zero-padded suffixes if that ever happens."""
+    root = folder(cfg["runs"])
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = prefix + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    for n in itertools.count(1):
+        run_id = stamp if n == 1 else f"{stamp}-{n}"
+        try:
+            (root / run_id).mkdir()
+            return run_id, root / run_id
+        except FileExistsError:
+            continue
+
+
 def judge_check(cfg, version=None, limit=0):
     path, version = find_dataset(cfg, cfg["judge_set"] or manage.only_dataset(cfg, "judge"), version)
+    bad = manage.problems(path)   # before any judging: a bad band would otherwise crash the count at the end
+    if bad:
+        raise SystemExit(f"{path}: " + "; ".join(f"line {n}: {what}" for n, what in bad[:5]) + ". Run `nasute dataset check` for all of them.")
     header, items, fingerprint = load_dataset(path, version)
     items = items[:limit] if limit else items
     cfg["judge"]["model"] = cfg["judge"]["model"] or model_name(cfg["judge"]["url"], cfg["judge"]["headers"])
-    run_id = "judge-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out = folder(cfg["runs"]) / run_id
-    out.mkdir(parents=True)
+    run_id, out = new_run_folder(cfg, "judge-")
     start, got, down, aborted = time.monotonic(), [], 0, None
     for it in items:
         t = time.monotonic()
@@ -1012,12 +1031,17 @@ def summarise(rows, fingerprint, cfg, extra):
     }
 
 
+# What a target's reply may hold: what http.ask returns, plus the two flags the harness reads. Anything else is dropped, so a
+# "module:function" target cannot replace the question's id, reference, answerable or expected sources it is judged against.
+REPLY_KEYS = {"answer", "sources", "links", "extracts", "first_text_s", "total_s", "error", "unreachable", "extracts_failed", *http.USAGE}
+
+
 def ask_target(cfg, kind, question, tcfg):
     """One call to the system under test. A target that says it could not connect is tried again after 5, 15, 45 s.
     An error or an empty answer is the system's fault."""
     for wait in (0,) + BACKOFF:
         time.sleep(wait)
-        got = target_ask(kind)(question, tcfg, cfg["timeout"])
+        got = {k: v for k, v in target_ask(kind)(question, tcfg, cfg["timeout"]).items() if k in REPLY_KEYS}
         if not got.get("unreachable"):
             break
     rest(cfg)
@@ -1088,9 +1112,7 @@ def run(cfg, name, version, limit, target=None, label=""):
     if cfg["judge_check"] and judge_check(cfg).get("aborted"):
         raise SystemExit("judge-check stopped because the judge could not be reached; the run was not started")
     answering = model_name(tcfg["model_url"]) if tcfg.get("model_url") else "unknown"
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out = folder(cfg["runs"]) / run_id
-    out.mkdir(parents=True)
+    run_id, out = new_run_folder(cfg)
     if label:
         set_label(cfg, run_id, label.strip())
     log("run_start", run=run_id, dataset=name, target=target, version=vtext(version), questions=len(questions), repeats=cfg["repeats"], workers=cfg["workers"], profile=cfg["profile"],

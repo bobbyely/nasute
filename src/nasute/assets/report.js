@@ -31,7 +31,7 @@ const plain = m => cap(G[m].plain) + ".";
 const plainLine = m => h("span", { class: "plain-line", text: G[m].plain });
 const f2 = x => x == null ? "–" : x.toFixed(2);
 const sgn = x => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(2);
-const iso = id => id.replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, "$1-$2-$3T$4:$5:$6Z");
+const iso = id => id.replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z(-\d+)?$/, "$1-$2-$3T$4:$5:$6Z");   // "-2": a second run in the same second
 const when = id => new Date(iso(id)).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).replace(",", "").replace(/ /g, "\u00a0");   // "28 Oct 20:30", never split over lines
 const day = id => new Date(iso(id)).toLocaleString("en-AU", { day: "numeric", month: "short" });
 // "± 0.12" when the interval is symmetric around the mean, else the interval itself, shown within 0 to 1
@@ -618,7 +618,7 @@ function dataset() {
   const bar = compareBar(picked, go, () => { picked.clear(); panel.replaceChildren(); draw(); bar.paint(); });
   add(h("h2", { id: "runs", text: "Runs" }), h("p", { class: "intro", text: "Newest first. Tap a date to open the run; tick two or more to compare them question by question." }), host, bar.el, panel);
   draw();
-  const m = location.hash.match(/^#compare=([\w,]+)$/);
+  const m = location.hash.match(/^#compare=([\w,-]+)$/);
   if (m) { m[1].split(",").forEach(id => runs.some(r => r.run === id) && picked.add(id)); draw(); bar.paint(); if (picked.size > 1) requestAnimationFrame(go); }
 
   overTime(runs);

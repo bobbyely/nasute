@@ -180,8 +180,11 @@ def reason_checks():
     assert nasute.why_failed([row("a", correctness=0.4, hit=1.0, faithfulness=0.5, detail={"precision": 1.0})], cfg) == "judge?"
     assert nasute.why_failed([row("a", correctness=0.9, hit=0.0)], cfg) is None
     assert nasute.why_failed([row("a", error="timeout")], cfg) == "system"
-    c = nasute.causes([hit0, row("b", error="x"), row("c", correctness=1.0, hit=1.0)], cfg)
+    c = nasute.causes([hit0, row("b", error="x"), {**row("c", correctness=1.0, hit=1.0), "sources": ["Fees"]}], cfg)
     assert c["counts"] == {"retrieval": 1, "generation": 0, "judge?": 0, "system": 1} and [q["id"] for q in c["questions"]] == ["a", "b"], c
+    # a chat model that cites nothing: hit rate is not measured, so a wrong answer is never put down to retrieval
+    c = nasute.causes([hit0, row("c", correctness=1.0, hit=0.0)], cfg)
+    assert c["counts"]["retrieval"] == 0 and c["counts"]["generation"] == 1, c
     # the retrieval sentences name the standard terms
     s = nasute.retrieval_scores(["Iron"], ["Gold", "Iron"], 5)
     r = nasute.retrieval_reasons(["Iron"], ["Gold", "Iron"], 5, s)
@@ -249,6 +252,60 @@ def judge_prompt_checks():
         (tmp / "out" / "check.txt").write_text("mine")
         code, out = cli(tmp / "none.toml", "prompts", "export", str(tmp / "out"))
         assert code == 1 and "already exist" in out and (tmp / "out" / "check.txt").read_text() == "mine"
+
+
+def release_020_checks():
+    """0.2.0 fixes: two runs in one second, a target reply that tries to change the question, judge set types."""
+    import datetime as dt
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        cfg = {**nasute.DEFAULTS, "runs": str(tmp / "runs"), "report": str(tmp / "report")}
+        real = nasute.datetime
+        class Frozen(dt.datetime):   # every call is in the same second
+            @classmethod
+            def now(cls, tz=None):
+                return dt.datetime(2026, 1, 1, tzinfo=tz)
+        try:
+            nasute.datetime = Frozen
+            ids = [nasute.new_run_folder(cfg)[0] for _ in range(3)] + [nasute.new_run_folder(cfg, "judge-")[0]]
+        finally:
+            nasute.datetime = real
+        assert ids == ["20260101T000000Z", "20260101T000000Z-2", "20260101T000000Z-3", "judge-20260101T000000Z"], ids
+        d = {"name": "x", "version": 1, "sha256": "aaa"}
+        for i, x in zip(ids[:3], (0.2, 0.5, 0.9)):
+            (Path(cfg["runs"]) / i).rmdir()
+            fake_run(cfg, i, d, {"q1": {"correctness": x}, "q2": {"correctness": x}})
+        assert nasute.run_ids(cfg) == ids[:3] and nasute.compare(cfg)["a"] == ids[1]
+        assert manage.resolve(cfg, ids[0])[0] == ids[0] and manage.resolve(cfg, "20260101T000000Z-3")[0] == ids[2]
+        nasute.report(cfg)
+        assert all((tmp / "report" / "x@" / "runs" / f"{i}.html").exists() for i in ids[:3])
+        assert "Z(-\\d+)?$" in (PKG / "assets" / "report.js").read_text()   # dates on the page read the suffixed ids too
+        # a "module:function" target can add only reply fields, never change the question it is judged against
+        nasute.TARGETS["sly"] = lambda q, t, timeout: {"answer": "yes", "error": None, "reference": "yes", "id": "other", "answerable": False, "expected": [], "sources": ["A"], "tokens_in": 3}
+        got = nasute.ask_target({**cfg, "pause": 0, "max_temp": 0}, "sly", "q?", {})
+        assert got == {"answer": "yes", "error": None, "sources": ["A"], "tokens_in": 3}, got
+        real_judge = nasute.judge
+        try:
+            nasute.judge = lambda item, cfg: (item.update(seen=dict(item)) or {}, {}, None, None)
+            q = {"id": "q1", "question": "q?", "reference": "no", "sources": ["B"], "tags": [], "answerable": True}
+            r = nasute.attempts({**cfg, "pause": 0, "max_temp": 0}, "sly", q, {})[0]
+        finally:
+            nasute.judge = real_judge
+            del nasute.TARGETS["sly"]
+        assert (r["id"], r["reference"], r["answerable"], r["expected"]) == ("q1", "no", True, ["B"]), r
+        # a judge set's fields are type-checked, and judge-check stops before judging a bad one
+        jd = tmp / "datasets" / "jj"
+        jd.mkdir(parents=True)
+        good = {"id": "a", "kind": "right", "question": "q", "reference": "r", "extracts": ["e"], "answer": "r", "expect": {"correctness": [0.75, 1]}}
+        (jd / "v1.jsonl").write_text("".join(json.dumps(x) + "\n" for x in [{"dataset": "jj", "target": "judge"}, good,
+                                     {**good, "id": "b", "answer": 5, "extracts": "e", "expect": {"correctness": [1, 0.5], "speed": [0, 1]}}, {**good, "id": "c", "expect": [0, 1]}]))
+        bad = [what for _, what in manage.problems(jd / "v1.jsonl")]
+        assert bad == ["'answer' must be text", "'extracts' must be a list of text", "'expect' has no score called 'speed'", "'expect' correctness: must be [low, high], two numbers from 0 to 1, low first", "'expect' must be a table of scores, such as {\"correctness\": [0.75, 1]}"], bad
+        conf = tmp / "n.toml"
+        conf.write_text('judge_set = "jj"\n[judge]\nurl = "http://127.0.0.1:9/v1"\n')
+        code, out = cli(conf, "judge-check")
+        assert code != 0 and "line 3" in out, out
+        assert not any(p.name.startswith("judge-") and p.name != "judge-20260101T000000Z" for p in (tmp / "runs").iterdir())
 
 
 def settings_checks():
@@ -929,7 +986,10 @@ def manage_checks():
         finally:
             builtins.input = real_input
         cli(conf, "runs", "label", "20260101", "keep")
+        page = Path(cfg["report"]) / "ds@mine" / "runs"
+        assert (page / "20260101T000000Z.html").exists() and (page / "20260101T000000Z.results.jsonl").exists()
         assert cli(conf, "runs", "delete", "20260101", "--yes")[0] == 0 and nasute.run_meta(cfg) == {"labels": {}, "baselines": {}}
+        assert not (Path(cfg["report"]) / "ds@mine").exists()   # the report is rebuilt: no page or copy of a deleted run is left to serve
         assert nasute.run_ids(cfg) == ["20260103T000000Z"]
 
     # serve: the report folder over http on 127.0.0.1 only
@@ -1933,6 +1993,7 @@ def main():
     reason_checks()
     settings_checks()
     judge_prompt_checks()
+    release_020_checks()
     target_checks()
     settings_form_checks()
     suite_checks()

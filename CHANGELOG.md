@@ -11,6 +11,16 @@
   judged scores "not comparable", as for different judge models. A run's judge reliability only counts a check made
   with the same prompts. The run page and `runs show` say "custom judge prompts: ...".
 - `nasute prompts export FOLDER` writes the six built-in prompts as text files to start from. It never overwrites.
+- Fixed: two runs (or judge-checks) started in the same second no longer crash the second one. Run folders are made
+  exclusively, and a clash gets a suffix such as `20261112T005857Z-2`.
+- Fixed: a `module:function` target's reply can no longer overwrite the question's fields (`id`, `reference`,
+  `answerable`, expected sources). Only the reply keys `http` returns, plus `unreachable` and `extracts_failed`, are kept.
+- Fixed: `runs delete`, `runs label` and `runs baseline` rewrite the report, so a deleted run's page and its copied
+  results are no longer left for `serve` to show.
+- Fixed: a judge set's `answer`, `extracts`, `kind` and `expect` are type-checked by `dataset check`, and `judge-check`
+  stops before judging a set with a bad field instead of failing at the end.
+- Fixed: "Why questions failed" no longer gives retrieval as the cause when the system cited no sources at all (hit
+  rate not measured), as with plain chat models.
 
 ## 0.1.0 (unreleased)
 

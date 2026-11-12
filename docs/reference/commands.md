@@ -129,10 +129,10 @@ nasute runs delete RUN [--yes]
 | --- | --- |
 | `runs` | Lists runs grouped by suite, showing the date, profile, judge mode, counts, correctness with its interval, marks (`BASELINE`, `STOPPED EARLY`, `INCOMPLETE`) and label. `--suite` goes before any action word. |
 | `runs show RUN` | Shows one run's scores with their meanings, why answers failed, and the worst questions. |
-| `runs label RUN TEXT` | Sets a label, and empty text (`""`) removes it. |
-| `runs baseline RUN` | Makes RUN the baseline of its suite. A run that was stopped early cannot be a baseline. |
+| `runs label RUN TEXT` | Sets a label, and empty text (`""`) removes it. Rewrites the report. |
+| `runs baseline RUN` | Makes RUN the baseline of its suite, and rewrites the report. A run that was stopped early cannot be a baseline. |
 | `runs export RUN` | Writes the run as CSV, one row for each attempt, to the screen or to `--csv FILE`. With `--suite SUITE` instead of a run it writes one row for each question in each run of the suite. The columns are in [file formats](file-formats.md#exports). |
-| `runs delete RUN [--yes]` | Deletes a run folder after asking, and the baseline of a suite needs `--yes`. |
+| `runs delete RUN [--yes]` | Deletes a run folder after asking, and the baseline of a suite needs `--yes`. Rewrites the report, so the run's page and its copies are gone from it too. |
 
 RUN is a run id (such as `20261029T090937Z`) or the start of one, as long as only one run starts that way.
 

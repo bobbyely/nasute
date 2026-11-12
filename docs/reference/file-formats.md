@@ -48,7 +48,7 @@ A judge set is a dataset used to test the judge instead of a system, and it has 
 | `answer` | The answer to judge. Written by hand, with a known fault or none. |
 | `expect` | `{ metric: [low, high] }`. The range each score should fall in. Leave a metric out to skip it. |
 
-All of `id`, `kind`, `question`, `reference`, `extracts`, `answer`, `expect` are required.
+All of `id`, `kind`, `question`, `reference`, `extracts`, `answer`, `expect` are required. `id`, `kind`, `question`, `reference` and `answer` are text and `extracts` a list of text. Each `expect` key is a score that the judge gives (faithfulness, correctness, relevancy, context_recall or abstention), and each band is two numbers from 0 to 1, low first. `dataset check` reports a field that breaks these rules, and `judge-check` stops before judging if any does.
 
 ## CSV for `dataset import`
 
