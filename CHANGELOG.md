@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- Judge prompts can be changed from the settings: `[judge.prompts]` names a text file per prompt (`quick`, `split`,
+  `check`, `knowledge`, `knowledge_abstain`, `abstain`). Each file is checked when the settings load: readable UTF-8,
+  and exactly the placeholders of the built-in prompt it replaces (a literal brace is `{{` or `}}`). The reply shapes,
+  checks and counting do not change.
+- Runs and judge-checks record a short SHA-256 fingerprint of each judge prompt they used, and which were custom
+  (`judge_prompts` in the summary). `compare` and the report say when two runs used different prompts and mark their
+  judged scores "not comparable", as for different judge models. A run's judge reliability only counts a check made
+  with the same prompts. The run page and `runs show` say "custom judge prompts: ...".
+- `nasute prompts export FOLDER` writes the six built-in prompts as text files to start from. It never overwrites.
+
 ## 0.1.0 (unreleased)
 
 The first release. Named targets (`http`, or any `module:function`), suites, profiles, claim-level judging counted in code,

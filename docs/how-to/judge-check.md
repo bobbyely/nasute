@@ -34,4 +34,4 @@ The most useful items to add are the ones where you have seen the judge slip, su
 
 ---
 
-← [Previous](use-a-cloud-judge.md) · [Next](../reference/README.md) →
+← [Previous](use-a-cloud-judge.md) · [Next](change-the-judge-prompts.md) →

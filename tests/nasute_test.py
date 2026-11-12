@@ -188,6 +188,69 @@ def reason_checks():
     assert "2nd (1 / 2)" in r["mrr"] and r["hit"].startswith("Hit 1") and "1 / 1" in r["recall"], r
 
 
+def judge_prompt_checks():
+    """[judge.prompts]: a custom prompt is used, checked at load time, fingerprinted, flagged by compare; prompts export."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        conf = tmp / "n.toml"
+        conf.write_text('runs = "runs"\nreport = "report"\n[judge.prompts]\nabstain = "p/abstain.txt"\n')
+        (tmp / "p").mkdir()
+        bad = lambda text: ((tmp / "p" / "abstain.txt").write_text(text), cli(conf, "report"))[1]
+        for text, want in [("Q {question} {answer} {reference}", "has unknown {reference}"), ("Q {question} only", "is missing {answer}"),
+                           ('Reply like {"verdict": "declined"}. {question} {answer}', "{{"), ("Stray } {question} {answer}", "{{")]:
+            code, out = bad(text)
+            assert code != 0 and want in out and "abstain.txt" in out, (text, out)
+        (tmp / "p" / "abstain.txt").write_bytes(b"\xff\xfe {question} {answer}")
+        assert "not UTF-8" in cli(conf, "report")[1]
+        other = tmp / "other.toml"
+        other.write_text('[judge.prompts]\nquick = "gone.txt"\n')
+        assert "cannot read" in cli(other, "report")[1] and "gone.txt" in cli(other, "report")[1]
+        other.write_text('[judge.prompts]\nquik = "p/abstain.txt"\n')
+        assert "no prompt called 'quik'" in cli(other, "report")[1]
+        # literal braces work, and the custom text is what the judge is sent
+        (tmp / "p" / "abstain.txt").write_text('Reply like {{"verdict": "declined"}}.\nQ: {question}\nA: {answer}\n')
+        cfg = nasute.load_settings(conf)
+        sent = []
+        real = nasute.ask_json
+        try:
+            nasute.ask_json = lambda cfg, prompt, schema, max_tokens=500, verify=None: sent.append(prompt) or {"verdict": "declined", "why": "w"}
+            nasute.judge({"question": "q?", "reference": "", "answer": "no idea", "extracts": [], "answerable": False}, cfg)
+        finally:
+            nasute.ask_json = real
+        assert sent == ['Reply like {"verdict": "declined"}.\nQ: q?\nA: no idea'], sent
+        # the fingerprint: custom differs from built-in, and the text is never saved
+        mine, built = nasute.prompt_record(cfg), nasute.prompt_record(nasute.DEFAULTS)
+        assert mine["custom"] == ["abstain"] and built["custom"] == [] and mine["sha256"]["abstain"] != built["sha256"]["abstain"] and mine["sha256"]["quick"] == built["sha256"]["quick"]
+        assert nasute.prompts_differ(mine, built) == ["abstain"] and nasute.prompts_differ(built, None) == [] and nasute.prompts_differ(None, mine) == ["abstain"]
+        d = {"name": "x", "version": 1, "sha256": "aaa"}
+        fake_run(cfg, "20260101T000000Z", d, {"q1": {"hit": 1, "correctness": 1.0}, "q2": {"hit": 1, "correctness": 0.5}})
+        rows = json.loads((Path(cfg["runs"]) / "20260101T000000Z" / "summary.json").read_text())
+        assert rows["judge_prompts"]["custom"] == [] and "prompt_texts" not in rows["settings"]
+        s = nasute.summarise([], d, cfg, {"run": "r"})
+        assert s["judge_prompts"] == mine and "prompt_texts" not in s["settings"] and "declined" not in json.dumps(s), s["judge_prompts"]
+        (Path(cfg["runs"]) / "20260102T000000Z").mkdir()
+        old = Path(cfg["runs"]) / "20260101T000000Z"
+        (Path(cfg["runs"]) / "20260102T000000Z" / "results.jsonl").write_text((old / "results.jsonl").read_text())
+        (Path(cfg["runs"]) / "20260102T000000Z" / "summary.json").write_text(json.dumps({**json.loads((old / "summary.json").read_text()), "run": "20260102T000000Z", "judge_prompts": mine}))
+        c = nasute.compare(cfg, "20260101T000000Z", "20260102T000000Z")
+        assert any("Different judge prompts (abstain)" in n for n in c["notes"]) and c["metrics"]["correctness"]["verdict"] == "not comparable" and c["metrics"]["hit"]["verdict"] != "not comparable", c
+        nasute.report(cfg)
+        page = (Path(cfg["report"]) / "x@" / "runs" / "20260102T000000Z.html").read_text()
+        assert "Different judge prompts" in page and '"custom": ["abstain"]' in page
+        # a judge-check counts only for the prompts it was run with
+        jc = Path(cfg["runs"]) / "judge-20260101T000000Z"
+        jc.mkdir()
+        (jc / "summary.json").write_text(json.dumps({"run": jc.name, "judge_model": "m", "judge_mode": "quick", "judge_prompts": built, "items": 1, "metrics": {}}))
+        assert nasute.latest_judge_check(cfg, "m", "quick", built) and nasute.latest_judge_check(cfg, "m", "quick") and not nasute.latest_judge_check(cfg, "m", "quick", mine)
+        # export: all six, unedited files load as the built-in text, and it never overwrites
+        code, out = cli(tmp / "none.toml", "prompts", "export", str(tmp / "out"))
+        assert code == 0 and sorted(f.stem for f in (tmp / "out").iterdir()) == sorted(nasute.PROMPTS), out
+        assert nasute.load_prompts({n: str(tmp / "out" / f"{n}.txt") for n in nasute.PROMPTS}) == nasute.PROMPTS
+        (tmp / "out" / "check.txt").write_text("mine")
+        code, out = cli(tmp / "none.toml", "prompts", "export", str(tmp / "out"))
+        assert code == 1 and "already exist" in out and (tmp / "out" / "check.txt").read_text() == "mine"
+
+
 def settings_checks():
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "e.toml"
@@ -1869,6 +1932,7 @@ def main():
     judge_checks()
     reason_checks()
     settings_checks()
+    judge_prompt_checks()
     target_checks()
     settings_form_checks()
     suite_checks()

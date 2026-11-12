@@ -142,13 +142,15 @@ def paired_brief(c, keep):
 
 
 def judge_lines(cfg, sums, run_folder):
-    """For the line under the dashboard: each judge model and mode seen in runs, with its latest judge check. Names, dates and scores only."""
+    """For the line under the dashboard: each judge model, mode and set of prompts seen in runs, with its latest judge check. Names, dates and scores only."""
     judges = {}
     for run_id, s in sums.items():
         if s.get("judge_model"):
-            j = judges.setdefault((s["judge_model"], s.get("judge_mode") or "quick"), {"model": s["judge_model"], "mode": s.get("judge_mode") or "quick", "runs": 0})
+            p = s.get("judge_prompts")
+            j = judges.setdefault((s["judge_model"], s.get("judge_mode") or "quick", json.dumps(p, sort_keys=True)),
+                                  {"model": s["judge_model"], "mode": s.get("judge_mode") or "quick", "prompts": p, "custom": (p or {}).get("custom", []), "runs": 0})
             j.update(runs=j["runs"] + 1, last_run=run_id, folder=run_folder.get(run_id))
-    return [{**j, "check": N.latest_judge_check(cfg, j["model"], j["mode"], full=True)} for j in judges.values()]
+    return [{**{k: v for k, v in j.items() if k != "prompts"}, "check": N.latest_judge_check(cfg, j["model"], j["mode"], j["prompts"], full=True)} for j in judges.values()]
 
 
 def write(cfg):
@@ -191,8 +193,8 @@ def write(cfg):
     sums, meta = N.summaries(cfg), N.run_meta(cfg)
 
     def marker_check(s):
-        """The newest judge-check for this run's judge model and mode, looked up now (not when the run was made), so an old run shows a later check too."""
-        jc = N.latest_judge_check(cfg, s.get("judge_model"), s.get("judge_mode"), full=True)
+        """The newest judge-check for this run's judge model, mode and prompts, looked up now (not when the run was made), so an old run shows a later check too."""
+        jc = N.latest_judge_check(cfg, s.get("judge_model"), s.get("judge_mode"), s.get("judge_prompts"), full=True)
         return {"judge_check": jc, "judge_checked_since": bool(jc) and jc["run"] != (s.get("judge_reliability") or {}).get("run")}
     dataset_href = lambda name, up: f"{up}datasets/{slug(name)}.html"
     suites, run_folder = {}, {}

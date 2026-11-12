@@ -64,6 +64,27 @@ The `[judge]` table configures the model that marks the answers. It is kept sepa
 | `cache` | `false` |
 | `retries` | `2` |
 | `headers` | `{}` |
+| `prompts` | `{}` (every judge prompt is the built-in one) |
+
+### `[judge.prompts]`
+
+Each key names one judge prompt, and its value is a path to a UTF-8 text file that is sent instead of that built-in prompt. A relative path starts from the settings file's folder. Prompts you do not name keep the built-in text, which is in [judge prompts](judge-prompts.md).
+
+| Key | Replaces | Placeholders it must use |
+| --- | --- | --- |
+| `quick` | quick mode | `{question}`, `{reference}`, `{extracts}`, `{answer}` |
+| `split` | claims mode, step 1 | `{question}`, `{reference}`, `{answer}` |
+| `check` | claims mode, steps 2 to 5 | `{source}`, `{claims}` |
+| `knowledge` | knowledge mode | `{question}`, `{reference}`, `{answer}` |
+| `knowledge_abstain` | knowledge mode, unanswerable questions | `{question}`, `{answer}` |
+| `abstain` | quick and claims mode, unanswerable questions | `{question}`, `{answer}` |
+
+```toml
+[judge.prompts]
+quick = "prompts/quick.txt"
+```
+
+The files are checked when the settings load, before any question is asked. A file that cannot be read, is not UTF-8, misses a placeholder or has one the built-in prompt does not use stops Nasute with an error naming the file. To write a literal brace, double it: `{{` and `}}`. One newline at the end of the file is dropped. Only the path is saved with a run, not the text; the run records a short SHA-256 fingerprint of each prompt instead. See [change the judge prompts](../how-to/change-the-judge-prompts.md).
 
 ## `[targets.<name>]`
 

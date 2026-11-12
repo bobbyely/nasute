@@ -105,6 +105,14 @@ retries = 2
 # environment variable NAME, so the key never sits in this file. Runs record the header names only.
 headers = {}
 
+# Your own wording for a judge prompt: a text file per prompt, relative to this file. A prompt not named keeps
+# the built-in text. Names: quick, split, check, knowledge, knowledge_abstain, abstain. Start from the real text
+# with `nasute prompts export prompts`. A file must use exactly the {placeholders} of the prompt it replaces;
+# write a literal brace as {{ or }}. Runs record a fingerprint of each prompt, and compare says when two runs
+# used different ones. Check a changed prompt with `nasute judge-check` before trusting its scores.
+[judge.prompts]
+# quick = "prompts/quick.txt"
+
 # Systems under test, one table each: [targets.<name>]. The name is yours. A dataset's header says which target it is for;
 # `run --dataset X --target Y` asks the same questions of target Y instead. Settings differ by kind:
 #   kind = "http"    any JSON endpoint (targets/http.py), below

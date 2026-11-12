@@ -60,6 +60,7 @@ The full walk-through is the [Quick start](docs/tutorial.md).
 - [take the results into a spreadsheet?](docs/how-to/export-a-run.md)
 - [use a hosted model as the judge?](docs/how-to/use-a-cloud-judge.md)
 - [check the judge marks fairly?](docs/how-to/judge-check.md)
+- [change the words the judge is sent?](docs/how-to/change-the-judge-prompts.md)
 - [run a long test overnight?](docs/how-to/run-overnight.md)
 
 ## Documentation

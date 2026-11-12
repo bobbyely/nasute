@@ -579,7 +579,7 @@ function overview() {
   draw();
   for (const j of D.judges) {
     const jc = j.check, ms = jc ? SCORES.filter(m => jc.metrics[m]) : [];
-    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. "));
+    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode${j.custom && j.custom.length ? `, custom judge prompts: ${j.custom.join(", ")}` : ""}. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. "));
   }
   finish();
 }
@@ -930,7 +930,7 @@ function run() {
   put(h("h2", { class: "quiet", text: "Details" }),
     more("By topic and difficulty", groupTable(S.tags, "Topic"), h("div", { class: "gap" }), groupTable(S.difficulty || {}, "Difficulty")),
     h("p", { class: "small" }, "Download: ", h("a", { href: `${S.run}.csv`, download: "", text: "CSV" }), " · ", h("a", { href: `${S.run}.results.jsonl`, download: "", text: "JSON lines" }), " · ", h("a", { href: `${S.run}.summary.json`, download: "", text: "summary" }), "."),
-    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Judge: ${S.judge_model} (${S.judge_mode}). Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }),
+    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Judge: ${S.judge_model} (${S.judge_mode}${S.judge_prompts && S.judge_prompts.custom.length ? `, custom judge prompts: ${S.judge_prompts.custom.join(", ")}` : ""}). Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }),
     D.judge_check ? null : h("p", { class: "small", text: "No judge check yet for this judge and mode. Run: nasute judge-check" }));
 
   // The question view: one question across the whole page, with Previous and Next in the order the table is showing.

@@ -11,6 +11,7 @@ How it runs, by hand (no cron, no background service):
   nasute demo-server             a stand-in system and judge, for the quick start
   nasute dataset check|import|list   look after question files
   nasute runs [show|label|baseline|delete]   look after saved runs
+  nasute prompts export FOLDER   write the built-in judge prompts as text files, to edit and name in [judge.prompts]
   python3 tests/nasute_test.py              the checks, from a checkout; no network, no model
 
 Reads: nasute.toml (--config, else ./nasute.toml, else the one beside this file), a dataset file
@@ -19,8 +20,8 @@ Writes: runs/<UTC time>/results.jsonl and summary.json, runs/index.json (labels,
 runs/judge-<UTC time>/ for judge checks, and the report folder (pages.py).
 A suite is one dataset asked of one target; runs, baselines and charts are grouped by suite.
 Settings (all have defaults here; see nasute.example.toml): datasets, runs, report, dataset, judge_set, k, timeout,
-limit, repeats, pass_at, detect, worse_by, profiles, [judge] url/model/timeout/mode/headers and [targets.<name>]
-(kind plus that kind's settings).
+limit, repeats, pass_at, detect, worse_by, profiles, [judge] url/model/timeout/mode/headers, [judge.prompts] (a text file
+per judge prompt to use instead of the built-in one) and [targets.<name>] (kind plus that kind's settings).
 
 The judge never gives a score. It only says yes or no about single claims; this file counts them.
 Statistics follow Evan Miller, "Adding Error Bars to Evals" (arXiv 2411.00640). Standard library only.
@@ -37,6 +38,7 @@ import math
 import re
 import socket
 import statistics
+import string
 import subprocess
 import sys
 import threading
@@ -87,7 +89,8 @@ DEFAULTS = {
     "max_temp": 0,                 # also wait while the CPU is hotter than this (°C); 0 = off
     "workers": 1,                  # questions run at once; more only for endpoints that take parallel requests
     "max_judge_errors": 0.1,       # more judge failures than this share of answers: the run is marked incomplete
-    "judge": {"url": "http://127.0.0.1:8080/v1", "model": "", "timeout": 240, "mode": "quick", "cache": False, "retries": 2, "headers": {}},
+    "judge": {"url": "http://127.0.0.1:8080/v1", "model": "", "timeout": 240, "mode": "quick", "cache": False, "retries": 2, "headers": {},
+              "prompts": {}},              # prompt name -> a text file used instead of that built-in judge prompt; see load_prompts()
     "targets": {},                 # name -> {kind, model_url, ...that kind's settings}
     "profiles": {},                # name -> any of the settings above, merged over them by --profile
 }
@@ -231,7 +234,8 @@ def load_settings(path=None, profile=None):
     base = path.resolve().parent
     if str(base) not in sys.path:
         sys.path.append(str(base))   # a "module:function" target can sit next to the settings file
-    return {**cfg, "profile": profile or "", "datasets": [str(base / d) for d in cfg["datasets"]], "runs": str(base / cfg["runs"]), "report": str(base / cfg["report"])}
+    cfg["judge"] = {**cfg["judge"], "prompts": {n: str(base / f) for n, f in cfg["judge"]["prompts"].items()}}
+    return {**cfg, "prompt_texts": load_prompts(cfg["judge"]["prompts"]), "profile": profile or "", "datasets": [str(base / d) for d in cfg["datasets"]], "runs": str(base / cfg["runs"]), "report": str(base / cfg["report"])}
 
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
@@ -520,6 +524,67 @@ ABSTAIN_ASK = """The library holds no answer to this QUESTION, so a good reply s
 QUESTION: {question}
 ANSWER: {answer}"""
 
+PROMPTS = {"quick": QUICK_ASK, "split": SPLIT_ASK, "check": CHECK_ASK, "knowledge": KNOWLEDGE_ASK, "knowledge_abstain": KNOWLEDGE_ABSTAIN_ASK, "abstain": ABSTAIN_ASK}
+MODE_PROMPTS = {"quick": ("quick", "abstain"), "claims": ("split", "check", "abstain"), "knowledge": ("knowledge", "knowledge_abstain")}
+BRACES = "To write a literal brace, double it: {{ for { and }} for }."
+
+
+def placeholders(text):
+    """The {names} a prompt is filled with. Worked out from the text, so the built-in prompts set the rule. A stray brace raises ValueError."""
+    return {f for _, f, _, _ in string.Formatter().parse(text) if f is not None}
+
+
+def load_prompts(paths):
+    """{prompt name: file} from [judge.prompts] -> {prompt name: text}. Checked here, at load time, so a bad file stops before
+    any question is asked: it must be UTF-8 and use exactly the placeholders of the built-in prompt it replaces."""
+    texts = {}
+    for name, f in paths.items():
+        if name not in PROMPTS:
+            raise SystemExit(f"[judge.prompts] has no prompt called {name!r}: use {', '.join(PROMPTS)}")
+        try:
+            text = Path(f).read_bytes().decode("utf-8").removesuffix("\n")   # the newline an editor adds is not part of the prompt
+        except OSError as e:
+            raise SystemExit(f"judge prompt {name}: cannot read {f} ({e.strerror})")
+        except UnicodeDecodeError:
+            raise SystemExit(f"judge prompt {name}: {f} is not UTF-8 text")
+        want = placeholders(PROMPTS[name])
+        try:
+            got = placeholders(text)
+        except ValueError as e:
+            raise SystemExit(f"judge prompt {name}: {f} has a single brace ({e}). {BRACES}")
+        if got != want:
+            wrong = [f"is missing {', '.join('{' + x + '}' for x in sorted(want - got))}"] * bool(want - got) + \
+                    [f"has unknown {', '.join('{' + x + '}' for x in sorted(got - want))}"] * bool(got - want)
+            raise SystemExit(f"judge prompt {name}: {f} {' and '.join(wrong)}. It must use exactly {', '.join('{' + x + '}' for x in sorted(want))}. {BRACES}")
+        try:
+            text.format(**dict.fromkeys(want, ""))   # what parsing lets through, such as {answer:{x}}
+        except (ValueError, KeyError, IndexError, AttributeError) as e:
+            raise SystemExit(f"judge prompt {name}: {f} has a brace Nasute cannot fill ({e}). {BRACES}")
+        texts[name] = text
+    return texts
+
+
+def prompt(cfg, name):
+    """The text of one judge prompt: the settings' file if one was named, else the built-in."""
+    return cfg.get("prompt_texts", {}).get(name, PROMPTS[name])
+
+
+def prompt_record(cfg):
+    """Which judge prompts a run or judge-check used: a short SHA-256 of each prompt its mode uses, and which were custom.
+    Prompt text is not saved, only this. An unknown mode is judged as claims mode (see judge()), so it records those."""
+    names = MODE_PROMPTS.get(cfg["judge"]["mode"], MODE_PROMPTS["claims"])
+    return {"sha256": {n: hashlib.sha256(prompt(cfg, n).encode()).hexdigest()[:12] for n in names},
+            "custom": [n for n in names if n in cfg.get("prompt_texts", {})]}
+
+
+def prompts_differ(a, b):
+    """Names of the judge prompts two records (from prompt_record) do not share. A run from before 0.2.0 has no record:
+    it used the built-in prompts, so it differs only by what the other run had custom."""
+    if a and b:
+        return sorted(n for n in a["sha256"].keys() & b["sha256"].keys() if a["sha256"][n] != b["sha256"][n])
+    return sorted((a or b or {}).get("custom", []))
+
+
 REL = {"yes": 1.0, "partly": 0.5, "no": 0.0}
 S_STR = {"type": "string"}
 S_REL = {"type": "string", "enum": list(REL)}
@@ -751,7 +816,7 @@ def check(cfg, claims, source):
     def one_each(reply):
         if len(reply["verdicts"]) != len(claims):
             raise ValueError(f"judge gave {len(reply['verdicts'])} verdicts for {len(claims)} claims")
-    v = ask_json(cfg, CHECK_ASK.format(source=source, claims="\n".join(f"{i + 1}. {c}" for i, c in enumerate(claims))), CHECK_SCHEMA, 100 + 60 * len(claims), one_each)["verdicts"]
+    v = ask_json(cfg, prompt(cfg, "check").format(source=source, claims="\n".join(f"{i + 1}. {c}" for i, c in enumerate(claims))), CHECK_SCHEMA, 100 + 60 * len(claims), one_each)["verdicts"]
     one_each({"verdicts": v})   # again, for a judge replaced in tests
     return [x["supported"] == "yes" for x in v], [x["why"] for x in v]
 
@@ -766,26 +831,26 @@ def judge(item, cfg):
     try:
         if item.get("answerable", True) is False and mode == "knowledge":
             # Declining but adding something false (a wrong year for a real prize, say) scores 0.5, like right with an error.
-            v = ask_json(cfg, KNOWLEDGE_ABSTAIN_ASK.format(**fill), KNOWLEDGE_ABSTAIN_SCHEMA, 1000)
+            v = ask_json(cfg, prompt(cfg, "knowledge_abstain").format(**fill), KNOWLEDGE_ABSTAIN_SCHEMA, 1000)
             ok, false = v["verdict"] == "declined", v["false_claims"]
             a = (0.5 if false else 1.0) if ok else 0.0
             return {**none, "abstention": a}, {"abstention": f"Abstention {a:.1f}: the judge says the answer " +
                    ("declines" if ok else "makes something up") + f" ({clip(v['why'], 120)})." +
                    (f" False: {'; '.join(clip(f['claim']) for f in false[:2])}." if false else "")}, {"mode": mode, **v}, None
         if item.get("answerable", True) is False:
-            v = ask_json(cfg, ABSTAIN_ASK.format(**fill), ABSTAIN_SCHEMA, 150)
+            v = ask_json(cfg, prompt(cfg, "abstain").format(**fill), ABSTAIN_SCHEMA, 150)
             ok = v["verdict"] == "declined"
             return {**none, "abstention": float(ok)}, {"abstention": f"Abstention {int(ok)}: the judge says the answer " +
                    ("declines" if ok else "makes something up") + f" ({clip(v['why'], 120)})."}, {"mode": mode, **v}, None
         if mode == "knowledge":
-            marks = ask_json(cfg, KNOWLEDGE_ASK.format(**fill), KNOWLEDGE_SCHEMA, 1200)   # room enough that a long answer's checks aren't cut off
+            marks = ask_json(cfg, prompt(cfg, "knowledge").format(**fill), KNOWLEDGE_SCHEMA, 1200)   # room enough that a long answer's checks aren't cut off
             scores, reasons = knowledge_scores(marks)
             return {**none, **scores}, reasons, {"mode": mode, **marks}, None
         if mode == "quick":
-            marks = ask_json(cfg, QUICK_ASK.format(**fill), QUICK_SCHEMA, 700)
+            marks = ask_json(cfg, prompt(cfg, "quick").format(**fill), QUICK_SCHEMA, 700)
             scores, reasons = quick_scores(marks, bool(item["extracts"]))
             return {**none, **scores}, reasons, {"mode": mode, **marks}, None
-        s = ask_json(cfg, SPLIT_ASK.format(**fill), SPLIT_SCHEMA, 700)
+        s = ask_json(cfg, prompt(cfg, "split").format(**fill), SPLIT_SCHEMA, 700)
         ac, rc, has = s["answer_claims"], s["reference_claims"], bool(item["extracts"])
         a_ext, w1 = check(cfg, ac, extracts) if has else ([], [])
         a_ref, w2 = check(cfg, ac, f"QUESTION: {item['question']}\nREFERENCE ANSWER: {item['reference']}")
@@ -855,7 +920,7 @@ def judge_check(cfg, version=None, limit=0):
             aborted = "the judge could not be reached for 3 items in a row"
             break
     metrics, wrong = check_scores(items[:len(got)], got)
-    summary = {"run": run_id, "dataset": fingerprint, "judge_model": cfg["judge"]["model"], "judge_mode": cfg["judge"]["mode"], "items": len(got), "set_size": len(items), "aborted": aborted,
+    summary = {"run": run_id, "dataset": fingerprint, "judge_model": cfg["judge"]["model"], "judge_mode": cfg["judge"]["mode"], "judge_prompts": prompt_record(cfg), "items": len(got), "set_size": len(items), "aborted": aborted,
                "failed": sum(g is None for g in got), "total_s": round(time.monotonic() - start, 1), "metrics": metrics, "wrong": wrong}
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     log("judge_check_done", run=run_id, total_s=summary["total_s"], accuracy={m: v["accuracy"] for m, v in metrics.items()}, kappa={m: v["kappa"] for m, v in metrics.items()})
@@ -864,15 +929,15 @@ def judge_check(cfg, version=None, limit=0):
     return summary
 
 
-def latest_judge_check(cfg, model, mode, full=False):
-    """The newest complete judge-check for this judge model and mode (else the newest stopped one, marked aborted), trimmed for a run's summary. None if there is none.
+def latest_judge_check(cfg, model, mode, prompts=None, full=False):
+    """The newest complete judge-check for this judge model, mode and prompts (a prompt_record; None is the built-in ones) (else the newest stopped one, marked aborted), trimmed for a run's summary. None if there is none.
     full=True (the report) adds the judge set and the list of marks that were wrong."""
     root = folder(cfg["runs"])
     stopped = None
     for d in sorted(root.glob("judge-*"), reverse=True) if root.exists() else []:
         if (d / "summary.json").exists():
             s = json.loads((d / "summary.json").read_text())
-            if s["judge_model"] == model and s["judge_mode"] == mode:
+            if s["judge_model"] == model and s["judge_mode"] == mode and not prompts_differ(prompts, s.get("judge_prompts")):
                 rec = {"run": s["run"], "items": s["items"], "set_size": s.get("set_size", s["items"]), "aborted": s.get("aborted"), "metrics": s["metrics"]}
                 if full:
                     rec.update(dataset={k: s["dataset"][k] for k in ("name", "version")}, wrong=s.get("wrong", []))
@@ -933,7 +998,8 @@ def summarise(rows, fingerprint, cfg, extra):
     jrate = c["judge_errors"] / len(ok) if ok else 0.0
     binary = lambda m: m in ("hit", "abstention", "error_rate")
     return {
-        **extra, "dataset": fingerprint, "settings": public(cfg), "profile": cfg.get("profile", ""), "judge_mode": cfg["judge"]["mode"], "judge_cache": cfg["judge"]["cache"],
+        **extra, "dataset": fingerprint, "settings": public({k: v for k, v in cfg.items() if k != "prompt_texts"}), "profile": cfg.get("profile", ""),
+        "judge_mode": cfg["judge"]["mode"], "judge_prompts": prompt_record(cfg), "judge_cache": cfg["judge"]["cache"],
         "temperature": cfg["temperature"], "repeats": cfg["repeats"], "pass_at": cfg["pass_at"],
         "metrics": {m: stats(groups_of(rows, m), binary=binary(m)) for m in METRICS},
         "metrics_answered": {m: stats(groups_of(ok, m), binary=binary(m)) for m in METRICS if m != "error_rate"},
@@ -1065,7 +1131,7 @@ def run(cfg, name, version, limit, target=None, label=""):
     summary = summarise(rows, fingerprint, cfg, {
         "run": run_id, "commit": git_commit(), "target": target, "target_kind": kind, "answering_model": answering, "judge_model": cfg["judge"]["model"], "aborted": aborted,
         "questions": len({r["id"] for r in rows}), "attempts": len(rows), "total_s": round(time.monotonic() - start, 1),
-        "judge_reliability": latest_judge_check(cfg, cfg["judge"]["model"], cfg["judge"]["mode"]),
+        "judge_reliability": latest_judge_check(cfg, cfg["judge"]["model"], cfg["judge"]["mode"], prompt_record(cfg)),
         "time_to_first_text_s": mean_std([r["first_text_s"] for r in rows])["mean"], "usage": usage_totals(rows)})
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     if aborted:
@@ -1278,7 +1344,11 @@ def compare(cfg, a_id=None, b_id=None, suite=None):
     for key, label in (("judge_model", "judge models"), ("answering_model", "answering models")):
         if sa.get(key) != sb.get(key):
             notes.append(f"Different {label}: {sa.get(key)} against {sb.get(key)}." + (" Marked scores are not comparable." if key == "judge_model" else ""))
-    other_judge = sa.get("judge_model") != sb.get("judge_model")
+    other_prompts = prompts_differ(sa.get("judge_prompts"), sb.get("judge_prompts"))
+    if other_prompts:   # another prompt is another marker, like another judge model
+        custom = lambda x: ", ".join((x.get("judge_prompts") or {}).get("custom", [])) or "none"
+        notes.append(f"Different judge prompts ({', '.join(other_prompts)}): custom {custom(sa)} against custom {custom(sb)}. Marked scores are not comparable.")
+    other_judge = sa.get("judge_model") != sb.get("judge_model") or bool(other_prompts)
     notes += [f"Run {x['run']} is incomplete: too many judge errors ({x['judge_error_rate']:.0%}). Its scores have gaps." for x in (sa, sb) if x.get("incomplete")]
     shared = sorted({r["id"] for r in ra} & {r["id"] for r in rb}) if not warning else []
     failed = lambda rows: {r["id"] for r in rows if r["error"] and r["id"] in shared}
@@ -1374,6 +1444,8 @@ def main(argv=None):
     c.add_argument("runs", nargs="*")
     c.add_argument("--suite")
     sub.add_parser("report")
+    pr = sub.add_parser("prompts", help="the judge prompts").add_subparsers(dest="action", required=True)
+    pr.add_parser("export", help="write the built-in judge prompts as text files to edit; never overwrites").add_argument("folder")
     sub.add_parser("demo-server", help="a stand-in system and judge on port 8700, for trying Nasute with no account and no model")
     sv = sub.add_parser("serve", help="show the report folder in a browser on this machine")
     sv.add_argument("--port", type=int, default=8765)
@@ -1406,6 +1478,8 @@ def main(argv=None):
     setup_logging(a.log)
     if a.cmd == "init":
         return manage.init(a.folder, a.demo)
+    if a.cmd == "prompts":
+        return manage.prompts_export(a.folder)
     cfg = load_settings(a.config, getattr(a, "profile", None))
     if getattr(a, "mode", None):
         cfg["judge"]["mode"] = a.mode
@@ -1417,7 +1491,7 @@ def main(argv=None):
         run(cfg, name, a.version, a.limit if a.limit is not None else cfg["limit"], a.target, a.label)
     elif a.cmd == "judge-check":
         s = judge_check(cfg, limit=a.limit)
-        print(json.dumps({k: s[k] for k in ("run", "judge_model", "judge_mode", "items", "failed", "total_s", "metrics", "wrong")}, indent=1))
+        print(json.dumps({k: s[k] for k in ("run", "judge_model", "judge_mode", "judge_prompts", "items", "failed", "total_s", "metrics", "wrong")}, indent=1))
     elif a.cmd == "compare":
         print(show_compare(compare(cfg, *a.runs, suite=a.suite) if len(a.runs) == 2 else compare(cfg, suite=a.suite)))
     elif a.cmd == "report":

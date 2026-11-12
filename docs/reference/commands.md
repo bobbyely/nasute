@@ -24,6 +24,16 @@ nasute init [FOLDER] [--demo]
 
 It writes `nasute.toml` and `datasets/example/v1.jsonl` into FOLDER, which defaults to the current folder. With `--demo` the settings point at `nasute demo-server` (the system, its sources and the judge), so you can try a run without editing anything. It never overwrites anything: if either file already exists it writes nothing, lists the files in the way, and returns 1.
 
+## prompts export
+
+`prompts export` writes the six built-in judge prompts as text files, so that you can start a custom prompt from the real text.
+
+```text
+nasute prompts export FOLDER
+```
+
+It writes `quick.txt`, `split.txt`, `check.txt`, `knowledge.txt`, `knowledge_abstain.txt` and `abstain.txt` into FOLDER, creating it if needed. It needs no settings. It never overwrites anything: if any of the files already exists it writes nothing, lists the files in the way, and returns 1. Name the files you change in [`[judge.prompts]`](settings.md#judgeprompts). See [change the judge prompts](../how-to/change-the-judge-prompts.md).
+
 ## run
 
 `run` is the command that does the actual testing, and it asks every question of a dataset, judges the answers, scores them, saves the run and rewrites the report.
@@ -54,7 +64,7 @@ When your settings file has one target and one dataset, the first run needs no o
 nasute judge-check [--mode quick|claims] [--limit N]
 ```
 
-It reports how often the judge's marks fall where they should. The set is the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`, and the results are saved under `runs/judge-<UTC time>/`. With `--limit N` only the first N items are checked. See [check the judge](../how-to/judge-check.md).
+It reports how often the judge's marks fall where they should. The set is the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`, and the results are saved under `runs/judge-<UTC time>/`. With `--limit N` only the first N items are checked. The check records which judge prompts it used, and a run's judge reliability only counts a check made with the same prompts. See [check the judge](../how-to/judge-check.md).
 
 ## compare
 
@@ -66,7 +76,7 @@ nasute compare [RUN_A RUN_B] [--suite SUITE]
 
 With two run ids, it compares them, treating A as the older run. With none, it compares the newest run (of SUITE, if you give one) against its reference run, which is the suite's baseline if the profiles fit and otherwise the previous compatible run. You must give exactly two ids or none, because a single id is ignored, and a run id can be shortened to its start only in `runs ...` commands, not here.
 
-Two runs can be compared when they used the same dataset file, whatever their targets. Runs that name different profiles, or that used different dataset files, print "not comparable" and no verdicts. See [compare two models](../how-to/compare-runs.md).
+Two runs can be compared when they used the same dataset file, whatever their targets. Runs that name different profiles, or that used different dataset files, print "not comparable" and no verdicts. Runs marked by a different judge model or with different judge prompts get a note, such as `Different judge prompts (quick): custom quick against custom none. Marked scores are not comparable.`, and their marked scores (faithfulness, correctness, relevancy, context recall, abstention) show "not comparable"; retrieval scores and error rate are still compared. See [compare two models](../how-to/compare-runs.md).
 
 ## report
 

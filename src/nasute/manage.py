@@ -1,8 +1,8 @@
-"""Looking after Nasute's files: `init`, `dataset check|import|list`, `runs ...` and `serve`.
+"""Looking after Nasute's files: `init`, `prompts export`, `dataset check|import|list`, `runs ...` and `serve`.
 
 How it runs: imported by nasute, which hands it the settings; each function is one command and returns the exit code
 (None or 0 is success). Reads: the settings, datasets, runs, starter/. Writes: only what the command is for: a starter
-folder, the next dataset version, runs/index.json, or (delete) a run folder.
+folder, the judge prompts as text files, the next dataset version, runs/index.json, or (delete) a run folder.
 """
 import csv
 import functools
@@ -54,6 +54,23 @@ def init(folder, demo=False):
     say(f"\nNext: edit the [targets.mine] table in {folder / 'nasute.toml'}, then from that folder:\n"
         "  nasute dataset check example\n  nasute run --profile smoke\n"
         "  nasute report      (then open report/index.html)")
+
+
+def prompts_export(folder):
+    """Write the six built-in judge prompts as <name>.txt in `folder`, to edit and name in [judge.prompts]. Never overwrites:
+    if any file is there, nothing is written. A separate command, not an init flag, as a user with settings already wants only these."""
+    folder = Path(folder)
+    files = {folder / f"{name}.txt": text for name, text in N.PROMPTS.items()}
+    taken = [str(f) for f in files if f.exists()]
+    if taken:
+        say("Nothing written: these files already exist: " + ", ".join(taken))
+        return 1
+    folder.mkdir(parents=True, exist_ok=True)
+    for f, text in files.items():
+        f.write_text(text + "\n", encoding="utf-8")   # load_prompts() drops this newline, so an unedited file matches the built-in prompt
+        say(f"wrote {f}")
+    say("\nEdit the ones you want to change, then name only those in nasute.toml (paths start from the settings file's folder), for example:\n"
+        f"  [judge.prompts]\n  quick = \"{(folder / 'quick.txt').as_posix()}\"\nThen run nasute judge-check before trusting the scores.")
 
 
 # ---- datasets -----------------------------------------------------------------------------------
@@ -275,7 +292,8 @@ def runs_show(cfg, text):
     meta = N.run_meta(cfg)
     say(f"{run_id}  ({when(run_id)} UTC)  suite {s['dataset']['name']} × {s.get('target', '?')}"
         + (f"  \"{meta['labels'][run_id]}\"" if run_id in meta["labels"] else "") + ("  [BASELINE]" if meta["baselines"].get(N.suite_of(s)) == run_id else ""))
-    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
+    custom = (s.get("judge_prompts") or {}).get("custom")
+    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}{', custom judge prompts: ' + ', '.join(custom) if custom else ''}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
     say(s["counts_line"] + (f"\nSTOPPED EARLY: {s['aborted']}" if s.get("aborted") else "") + ("\nINCOMPLETE: too many judge errors" if s.get("incomplete") else ""))
     say("\n".join(N.describe(s)))
     if any(s["causes"]["counts"].values()):

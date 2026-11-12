@@ -24,6 +24,7 @@ The full settings file, with every setting explained, is `nasute.example.toml`. 
 - [Run overnight](docs/how-to/run-overnight.md)
 - [Use a cloud judge](docs/how-to/use-a-cloud-judge.md)
 - [Check the judge](docs/how-to/judge-check.md)
+- [Change the judge prompts](docs/how-to/change-the-judge-prompts.md): your own wording, checked with judge-check
 
 ## Reference
 
