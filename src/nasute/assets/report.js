@@ -858,8 +858,9 @@ function run() {
   const home = [D.dataset_href, D.suite.dataset];
   put(crumbs(home, [null, when(S.run)]), h("h1", { text: D.suite.target_label || D.suite.target }),
     h("p", { class: "dateline" }, `Run of ${when(S.run)} on ${S.dataset.name} v${ver(S.dataset.version)}. ${runLabel(S)}${D.label ? `, “${D.label}”` : ""}${D.baseline ? ", the baseline" : ""}. ${S.counts_line}. `,
-      S.aborted ? note(`Stopped early: ${S.aborted}. ${plain("aborted")}`) : null, S.incomplete ? note(`Incomplete: too many judge errors. ${plain("incomplete")}`) : null,
+      S.incomplete ? note(`Incomplete: too many judge errors. ${plain("incomplete")}`) : null,
       D.compare_href ? [h("a", { href: D.compare_href, text: "What changed since the run before" }), ". "] : null),
+    S.aborted ? h("p", { class: "note warn", text: `Stopped early: ${S.aborted}. The scores cover only the questions asked before that.` }) : null,   // in plain sight, not a footnote: the scores are partial
     headline(S, D.compare));
 
   const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1, out: "", group: "", all: false };   // out, group: a tapped at-a-glance segment; all: the phone list opened past FEW
