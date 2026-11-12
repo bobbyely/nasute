@@ -1,4 +1,4 @@
-"""Nasute: a self-hosted eval harness for RAG and LLMs. Asks a system under test a list of questions with known answers, scores what comes back,
+"""Nasute: tests AI systems that answer questions. Asks a system under test a list of questions with known answers, scores what comes back,
 and keeps every run so changes can be compared.
 
 How it runs, by hand (no cron, no background service):

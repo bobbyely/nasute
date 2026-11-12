@@ -21,6 +21,9 @@
   stops before judging a set with a bad field instead of failing at the end.
 - Fixed: "Why questions failed" no longer gives retrieval as the cause when the system cited no sources at all (hit
   rate not measured), as with plain chat models.
+- The README is shorter: what Nasute is, a Features list (with the judge modes in a table), and a four-step quick start.
+  Running from a clone moved to CONTRIBUTING.md. Nasute is described as a tool for any AI system that answers
+  questions, not only RAG; the PyPI summary says so from this release.
 
 ## 0.1.0 (unreleased)
 

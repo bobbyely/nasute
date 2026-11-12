@@ -1,10 +1,11 @@
 # Nasute
 
+*Nasute* is said "NAY-soot", from the Latin *nasutus*, "long-nosed": the soldier termite with a nozzle-shaped head that guards the colony.
+
 <img src="docs/images/logo.png" alt="Nasute logo: a nasute termite drawn in green and orange" width="160">
 
-A self-hosted eval harness for RAG (retrieval-augmented generation: a system that looks things up and then writes an answer) and for language models. It asks a system questions with known answers, has a second AI mark the answers claim by claim, counts, and keeps every run. It tells you whether a change made things better, worse or no different, with a 95% range on every number. Named after the nasute, the soldier termite that guards the colony.
-
-Plain Python 3.11 or newer, standard library only. Any system you can ask a question over HTTP is a target, and anything else takes one Python function.
+Nasute tests any AI system that answers questions. It asks questions with known answers, and a judge model marks the replies.
+It tells you whether a change made things better, worse or no different, with a 95% range on every number.
 
 <p>
 <img src="docs/images/report-phone-dashboard.png" alt="The report's front page on a phone: each dataset with its systems ranked, then recent runs" width="300">
@@ -13,25 +14,37 @@ Plain Python 3.11 or newer, standard library only. Any system you can ask a ques
 
 *The demo report on a phone: the front page, and a run page with its outcomes at a glance.*
 
+## Features
+
+- **Any system as the target.** A plain chat model, a search-and-answer system (RAG), or anything else behind an HTTP endpoint. Anything without one takes [one Python function](docs/how-to/add-a-target.md).
+- **Three judge modes.** Pick one per run:
+
+  | Mode | Use it for | Cost and speed |
+  | --- | --- | --- |
+  | `quick` | Most runs. Checks each claim in the answer against the sources and the reference. | One judge request per answer. Cheap. |
+  | `claims` | Careful runs. Splits the answer and the reference into single facts and checks each, so you see the facts behind every score. | Several requests per answer. About twice as slow. |
+  | `knowledge` | Plain chat models that cite nothing. Is the key fact there, and is anything false? | One request per answer. |
+
+- **The judge only says yes or no.** It never gives a score. Ordinary code counts its verdicts, so every score traces back to single claims ([why](docs/explanation/why-the-judge-says-yes-or-no.md)).
+- **Error bars and honest compares.** Every score has a 95% range. Comparing two runs says "real gain", "real drop" or "within noise" ([statistics](docs/explanation/statistics.md)).
+- **Honesty on unanswerable questions.** Ask about made-up names, and Nasute scores whether the system says it doesn't know or makes something up.
+- **A check on the judge.** `judge-check` marks hand-labelled answers with known faults, and reports how often the judge gets them right ([check the judge](docs/how-to/judge-check.md)).
+- **Custom judge prompts.** The built-in prompts are the default. Replace any one with a text file named in `[judge.prompts]` ([how](docs/how-to/change-the-judge-prompts.md)).
+- **Retrieval scores, when your system cites sources.** Hit rate, recall, MRR and faithfulness to the text it read. Left out when a system names no sources.
+- **Tags and difficulty.** Scores by topic, and by easy, medium and hard ([tag questions](docs/how-to/tag-questions.md)).
+- **Tokens and cost.** For the answers and for the judging, when the system and the judge report them.
+- **A static report.** Plain HTML files that work offline and on a phone. No server needed.
+- **Standard library only.** Python 3.11 or newer, nothing else to install.
+
 ## Quick start
 
-**Install.** Nasute uses only Python's standard library, so pipx is the way to install it; there is no Docker image, and none is needed.
+**Install.**
 
 ```bash
-pipx install nasute                     # or, until it is on PyPI: pipx install git+https://github.com/bobbyely/nasute
+pipx install nasute
 ```
 
-Or run it from a clone, with no install. Then type `python3 -m nasute` wherever this page says `nasute`:
-
-```bash
-git clone https://github.com/bobbyely/nasute && cd nasute
-export PYTHONPATH="$PWD/src"            # lets python3 find the code from any folder
-python3 -m nasute --help
-```
-
-Changing the code? Install it editable in a virtual environment instead (`python3 -m venv .venv && .venv/bin/pip install -e .`); see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-**Try the demo**, with no account and no model. In one terminal start the stand-in system and judge, and in another make a folder set up for it and run:
+**Try the demo**, with no account and no model. Start the stand-in system and judge in one terminal, then run in a second:
 
 ```bash
 nasute demo-server                      # leave it running
@@ -39,15 +52,19 @@ nasute init try --demo && cd try        # in a second terminal
 nasute run --profile smoke
 ```
 
-Each question gets a line as it is marked, such as `[2/3] water-boils ... right (0.0 s)`. The run ends with its scores, each with a 95% range, and a link to its page in the report.
+**Point it at your own model.** Run `nasute init mytest`, then edit `[targets.mine]` and `[judge]` in `mytest/nasute.toml`. Ready-made settings: [an OpenAI-compatible API](examples/openai-compatible.toml) and [Ollama](examples/ollama.toml).
 
-**Point it at your own model.** Run `nasute init mytest` (without `--demo`) and edit `[targets.mine]` and `[judge]` in `mytest/nasute.toml`. Ready-made settings: [a model behind an OpenAI-compatible API](examples/openai-compatible.toml) and [a model run by Ollama](examples/ollama.toml). Then `nasute run --profile smoke` from that folder.
+```bash
+cd mytest && nasute run --profile smoke
+```
 
-**Open the report.** Open `report/index.html` in a browser, or run `nasute serve` and visit `http://127.0.0.1:8765/`. The front page shows each dataset with its systems ranked; click through to a dataset and then to a run, or tick runs to compare them. To have the printed link use your own web address, set `report_url` (see [settings](docs/reference/settings.md)).
+**Open the report.** Open `report/index.html` in a browser, or serve it and visit `http://127.0.0.1:8765/`. To have the printed link use your own web address, set `report_url` ([settings](docs/reference/settings.md)).
 
-Progress prints as short lines at a terminal and as JSON lines when the output goes to a file or a pipe, for a program that reads logs; `--log text` or `--log json` picks one ([commands](docs/reference/commands.md)).
+```bash
+nasute serve
+```
 
-The full walk-through is the [Quick start](docs/tutorial.md).
+The full walk-through is the [Quick start](docs/tutorial.md). To run from a clone, or change the code, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## How do I…
 

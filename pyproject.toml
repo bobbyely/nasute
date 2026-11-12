@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nasute"
 version = "0.1.0"
-description = "A self-hosted eval harness for RAG and LLM systems: known-answer questions, a yes/no judge, error bars, and a static report."
+description = "Test AI systems with known-answer questions: a yes/no judge, error bars, and a static report."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "src/nasute/assets/*.LICENSE"]
