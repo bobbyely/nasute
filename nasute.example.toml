@@ -85,7 +85,9 @@ model = ""
 timeout = 240
 # "quick": one request per answer; cheap. "claims": the answer and the reference are split into single
 # facts and each is checked (RAGAS style); about twice as slow, and shows the facts behind every score.
-# Either way the judge only says yes or no about claims; the code counts them.
+# "knowledge": for plain chat models that cite nothing; is the key fact there, is anything false (extra true
+# detail is fine). Use a judge at least as capable as the models it judges.
+# Every way, the judge only says yes or no; the code counts.
 mode = "quick"
 # false: send "cache_prompt": false, so the model does not reuse earlier prompts. Questions cannot influence
 # each other, and timings are honest (the same prompt took 35 s cold and 3 s cached). llama.cpp honours it;
@@ -122,6 +124,11 @@ sources = ""
 # no links are used). The report makes a source a link only for an http(s) address or one starting with "/"; anything else stays plain text.
 links = ""
 extracts = ""
+# tokens_in, tokens_out, cost: optional paths to the reply's usage figures, recorded with each answer and totalled per run.
+# OpenAI-style replies: "$.usage.prompt_tokens" and "$.usage.completion_tokens"; OpenRouter also gives "$.usage.cost" (US dollars).
+tokens_in = ""
+tokens_out = ""
+cost = ""
 # timeout = 60   # seconds; the global timeout is used if this is not set
 
 # Profiles: a table of any of the settings above, merged over them by `nasute.py run --profile NAME`.

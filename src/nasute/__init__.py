@@ -449,6 +449,24 @@ SOURCE:
 CLAIMS:
 {claims}"""
 
+KNOWLEDGE_ASK = """You are checking one answer to a quiz question. Do not give a score.
+1. key_fact: Does the ANSWER itself state the REFERENCE's key fact, in any wording? "yes" or "no". Only count what the ANSWER says in plain text. A tool call, code, or a promise to look it up is "no".
+2. false_claims: Go through every name, date, number and place in the ANSWER one by one, including items in lists and later sentences, and check each. List any claim that is false or contradicts the REFERENCE. Use your own knowledge for claims the REFERENCE does not cover. List a claim only if you believe it is false: if you think it is true, leave it out. Extra detail that is true is fine and is not listed. If you are not sure a claim is false, do not list it. Empty list if none.
+3. answered: Did the ANSWER give an answer at all? "yes", or "no" for a refusal, "I don't know", a bare tool call or empty text.
+Give a few words of reason for each.
+
+QUESTION: {question}
+REFERENCE (the key fact a right answer must state): {reference}
+ANSWER: {answer}"""
+
+KNOWLEDGE_ABSTAIN_ASK = """The QUESTION is about something that does not exist, so a good reply says it does not know. Do not give a score.
+1. verdict: Did the ANSWER decline (say it cannot find it, does not know, or has nothing on it) or make something up (state an answer as if it were known)? "declined" or "made_something_up". Hedging while still giving a specific answer about the made-up subject is "made_something_up".
+2. false_claims: Go through every other name, date, number and place in the ANSWER one by one and check each. List any that is false. List a claim only if you believe it is false. Empty list if none.
+Give a few words of reason for each.
+
+QUESTION: {question}
+ANSWER: {answer}"""
+
 ABSTAIN_ASK = """The library holds no answer to this QUESTION, so a good reply says so. Did the ANSWER decline (say it cannot find it, does not know, or has nothing on it) or make something up (state an answer as if it were known)? verdict: "declined" or "made_something_up". Hedging while still giving a specific answer is "made_something_up". Give a few words of reason.
 
 QUESTION: {question}
@@ -467,6 +485,13 @@ SPLIT_SCHEMA = {"type": "object", "required": ["answer_claims", "reference_claim
     "answer_claims": S_LIST, "reference_claims": S_LIST, "relevancy": S_REL, "relevancy_why": S_STR}}
 CHECK_SCHEMA = {"type": "object", "required": ["verdicts"], "properties": {"verdicts": {"type": "array", "items": {
     "type": "object", "required": ["supported", "why"], "properties": {"supported": S_YN, "why": S_STR}}}}}
+KNOWLEDGE_SCHEMA = {"type": "object", "required": ["key_fact", "key_fact_why", "false_claims", "answered", "answered_why"], "properties": {
+    "key_fact": S_YN, "key_fact_why": S_STR,
+    "false_claims": {"type": "array", "items": {"type": "object", "required": ["claim", "why"], "properties": {"claim": S_STR, "why": S_STR}}},
+    "answered": S_YN, "answered_why": S_STR}}
+KNOWLEDGE_ABSTAIN_SCHEMA = {"type": "object", "required": ["verdict", "why", "false_claims"], "properties": {
+    "verdict": {"type": "string", "enum": ["declined", "made_something_up"]}, "why": S_STR,
+    "false_claims": {"type": "array", "items": {"type": "object", "required": ["claim", "why"], "properties": {"claim": S_STR, "why": S_STR}}}}}
 ABSTAIN_SCHEMA = {"type": "object", "required": ["verdict", "why"], "properties": {
     "verdict": {"type": "string", "enum": ["declined", "made_something_up"]}, "why": S_STR}}
 
@@ -561,6 +586,26 @@ def validate(v, schema, where="reply"):
         raise ValueError(f"{where}: schema type {t!r} not supported")   # shortcut: only what our schemas use; extend with them
 
 
+JUDGE_USE = threading.local()   # the judge's tokens and cost for the answer being judged now (each worker thread has its own)
+
+
+def judge_use_reset():
+    JUDGE_USE.tokens, JUDGE_USE.cost = None, None
+
+
+def judge_use_add(usage):
+    """Adds one judge reply's usage. Cost stays None unless the server reports one (OpenRouter does; llama.cpp doesn't)."""
+    if not isinstance(usage, dict):
+        return
+    if not hasattr(JUDGE_USE, "tokens"):
+        judge_use_reset()
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if num(usage.get("total_tokens")):   # anything else is ignored: usage is a note, never a reason to fail a judgement
+        JUDGE_USE.tokens = (JUDGE_USE.tokens or 0) + usage["total_tokens"]
+    if num(usage.get("cost")):
+        JUDGE_USE.cost = (JUDGE_USE.cost or 0) + usage["cost"]
+
+
 def ask_json(cfg, prompt, schema, max_tokens=500, verify=None):
     """One judge call, answer forced into the JSON schema. The reply must also pass `validate` and `verify` (a check of our own that raises);
     an invalid reply is retried like a failed call, then raises: it is a judge error, never a score.
@@ -573,7 +618,9 @@ def ask_json(cfg, prompt, schema, max_tokens=500, verify=None):
     if "seed" in cfg:
         body["seed"] = cfg["seed"]
     def call():
-        reply = json.loads(post(j["url"].rstrip("/") + "/chat/completions", body, j["timeout"], http.resolve_headers(j.get("headers", {})))["choices"][0]["message"]["content"])
+        whole = post(j["url"].rstrip("/") + "/chat/completions", body, j["timeout"], http.resolve_headers(j.get("headers", {})))
+        judge_use_add(whole.get("usage"))   # counted even if the reply is then refused: it was paid for
+        reply = json.loads(whole["choices"][0]["message"]["content"])
         validate(reply, schema)
         if verify:
             verify(reply)
@@ -609,6 +656,20 @@ def quick_scores(marks, has_extracts):
         reasons["faithfulness"] = f"Faithfulness {scores['faithfulness']:.2f} = claims backed by the extracts / claims in the answer = {sup} / {n}." + \
                                   (f" Not backed: {'; '.join(map(clip, unbacked))}." if unbacked else "")
     return scores, reasons
+
+
+def knowledge_scores(marks):
+    """From the judge's yes/no answers, for plain chat models that cite nothing. -> (scores, reasons).
+    Right = states the key fact and nothing false (1); right with an error = the key fact plus something false (0.5);
+    wrong or no answer = 0. Extra true detail costs nothing, unlike quick mode."""
+    key, false, answered = marks["key_fact"] == "yes", marks["false_claims"], marks["answered"] == "yes"
+    c = 0.0 if not answered or not key else 0.5 if false else 1.0
+    word = "no answer" if not answered else "wrong: the key fact is missing" if not key else "right, with an error" if false else "right"
+    reasons = {"correctness": f"Correctness {c:.1f}: {word} ({clip(marks['key_fact_why'], 120)})."
+                              + (f" False: {'; '.join(clip(f['claim']) for f in false[:2])}." if false else ""),
+               "relevancy": f"Relevancy {float(answered):.1f}: the judge says the answer " + ("gives an answer" if answered else "gives none")
+                            + f" ({clip(marks['answered_why'], 120)})."}
+    return {"faithfulness": None, "correctness": c, "relevancy": float(answered), "context_recall": None}, reasons
 
 
 def claim_scores(a_claims, r_claims, a_ext, a_ref, r_ext, r_ans):
@@ -655,11 +716,23 @@ def judge(item, cfg):
     fill = dict(question=item["question"], reference=item["reference"], extracts=extracts, answer=item["answer"])
     mode = cfg["judge"]["mode"]
     try:
+        if item.get("answerable", True) is False and mode == "knowledge":
+            # Declining but adding something false (a wrong year for a real prize, say) scores 0.5, like right with an error.
+            v = ask_json(cfg, KNOWLEDGE_ABSTAIN_ASK.format(**fill), KNOWLEDGE_ABSTAIN_SCHEMA, 1000)
+            ok, false = v["verdict"] == "declined", v["false_claims"]
+            a = (0.5 if false else 1.0) if ok else 0.0
+            return {**none, "abstention": a}, {"abstention": f"Abstention {a:.1f}: the judge says the answer " +
+                   ("declines" if ok else "makes something up") + f" ({clip(v['why'], 120)})." +
+                   (f" False: {'; '.join(clip(f['claim']) for f in false[:2])}." if false else "")}, {"mode": mode, **v}, None
         if item.get("answerable", True) is False:
             v = ask_json(cfg, ABSTAIN_ASK.format(**fill), ABSTAIN_SCHEMA, 150)
             ok = v["verdict"] == "declined"
             return {**none, "abstention": float(ok)}, {"abstention": f"Abstention {int(ok)}: the judge says the answer " +
                    ("declines" if ok else "makes something up") + f" ({clip(v['why'], 120)})."}, {"mode": mode, **v}, None
+        if mode == "knowledge":
+            marks = ask_json(cfg, KNOWLEDGE_ASK.format(**fill), KNOWLEDGE_SCHEMA, 1200)   # room enough that a long answer's checks aren't cut off
+            scores, reasons = knowledge_scores(marks)
+            return {**none, **scores}, reasons, {"mode": mode, **marks}, None
         if mode == "quick":
             marks = ask_json(cfg, QUICK_ASK.format(**fill), QUICK_SCHEMA, 700)
             scores, reasons = quick_scores(marks, bool(item["extracts"]))
@@ -841,15 +914,17 @@ def attempts(cfg, kind, q, tcfg, save=lambda row: None, stop=None):
         scores["error_rate"] = float(bool(got["error"]))
         scores.update(retrieval_scores(q["sources"], got["sources"], cfg["k"]))
         reasons = retrieval_reasons(q["sources"], got["sources"], cfg["k"], scores)
-        judged, detail, jerr, judge_s = {}, None, None, None
+        judged, detail, jerr, judge_s, judge_tokens, judge_cost = {}, None, None, None, None, None
         if got["error"]:   # strict: no answer scores 0 on every score that needs one
             need = ["abstention"] if q.get("answerable", True) is False else [m for m in GENERATION if m != "context_recall" or cfg["judge"]["mode"] == "claims"]
             judged = {m: 0.0 for m in need}
             reasons.update({m: f"{label(m, cfg['k'])} 0: system error, counted as 0 (strict). {clip(got['error'], 100)}." for m in need})
         else:
             t = time.monotonic()
+            judge_use_reset()
             judged, jreasons, detail, jerr = judge({**q, **got}, {**cfg, "seed": rep})
             judge_s = round(time.monotonic() - t, 1)
+            judge_tokens, judge_cost = JUDGE_USE.tokens, JUDGE_USE.cost
             reasons.update(jreasons)
             if got.get("extracts_failed"):   # the harness could not fetch the source text: not measured, and not the system's fault
                 for m in ("faithfulness", "context_recall"):
@@ -857,10 +932,22 @@ def attempts(cfg, kind, q, tcfg, save=lambda row: None, stop=None):
                         judged[m], reasons[m] = None, "Not measured: the source text could not be fetched (a harness problem, not counted against the system)."
         rows.append({"id": q["id"], "repeat": rep, "seed": rep, "tags": q["tags"], "difficulty": difficulty_of(q), "answerable": q.get("answerable", True), "question": q["question"],
                      "reference": q["reference"], "expected": q["sources"], **got, "scores": {**scores, **judged}, "reasons": reasons,
-                     "judge_detail": detail, "judge_error": jerr, "judge_s": judge_s,
+                     "judge_detail": detail, "judge_error": jerr, "judge_s": judge_s, "judge_tokens": judge_tokens, "judge_cost": judge_cost,
                      "unreachable": bool(got.get("unreachable")) or bool(jerr and jerr.startswith("Unreachable"))})
         save(rows[-1])
     return rows
+
+
+def usage_totals(rows):
+    """Tokens and cost for a run: the answers' (where the target reports them) and the judge's. A total is None when no row reported it,
+    so "not known" never shows as 0."""
+    def total(key):
+        vals = [r.get(key) for r in rows if isinstance(r.get(key), (int, float))]
+        return round(sum(vals), 6) if vals else None
+    n = len(rows) or 1
+    out = {k: total(k) for k in ("tokens_in", "tokens_out", "cost", "judge_tokens", "judge_cost")}
+    out["per_answer"] = {k: (round(v / n, 6) if v is not None else None) for k, v in out.items()}
+    return out
 
 
 def run(cfg, name, version, limit, target=None, label=""):
@@ -917,7 +1004,7 @@ def run(cfg, name, version, limit, target=None, label=""):
         "run": run_id, "commit": git_commit(), "target": target, "target_kind": kind, "answering_model": answering, "judge_model": cfg["judge"]["model"], "aborted": aborted,
         "questions": len({r["id"] for r in rows}), "attempts": len(rows), "total_s": round(time.monotonic() - start, 1),
         "judge_reliability": latest_judge_check(cfg, cfg["judge"]["model"], cfg["judge"]["mode"]),
-        "time_to_first_text_s": mean_std([r["first_text_s"] for r in rows])["mean"]})
+        "time_to_first_text_s": mean_std([r["first_text_s"] for r in rows])["mean"], "usage": usage_totals(rows)})
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
     log("run_done", run=run_id, total_s=summary["total_s"], counts=summary["counts_line"], aborted=aborted, incomplete=summary["incomplete"])
     if summary["incomplete"]:
@@ -1146,9 +1233,9 @@ def main(argv=None):
     r.add_argument("--label", default="", help='a name for this run, such as "prompt change"; the charts mark labelled runs')
     r.add_argument("--limit", type=int)
     r.add_argument("--repeats", type=int)
-    r.add_argument("--mode", choices=["quick", "claims"])
+    r.add_argument("--mode", choices=["quick", "claims", "knowledge"])
     j = sub.add_parser("judge-check")
-    j.add_argument("--mode", choices=["quick", "claims"])
+    j.add_argument("--mode", choices=["quick", "claims", "knowledge"])
     j.add_argument("--limit", type=int, default=0)
     c = sub.add_parser("compare")
     c.add_argument("runs", nargs="*")

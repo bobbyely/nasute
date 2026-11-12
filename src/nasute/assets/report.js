@@ -602,7 +602,17 @@ function repeatBlock(r, many) {
     r.extracts.length ? h("details", {}, h("summary", { text: `Extracts it read (${r.extracts.length})` }), r.extracts.map(x => h("pre", { text: x }))) : null,
     h("h4", { text: "Scores, and how each was counted" }), h("ul", { class: "plain" }, metrics.map(m => h("li", {}, h("b", { text: `${name(m)} ${f2(r.scores[m])}` }), h("span", { class: "muted", text: r.reasons[m] ? ` — ${r.reasons[m]}` : "" })))),
     claimsBlock(r.judge_detail),
-    h("p", { class: "small", text: `Answer took ${r.total_s ?? "–"} s${r.first_text_s != null ? ` (first text after ${r.first_text_s} s)` : ""}${r.judge_s != null ? `, judging ${r.judge_s} s` : ""}.` }));
+    h("p", { class: "small", text: `Answer took ${r.total_s ?? "–"} s${r.first_text_s != null ? ` (first text after ${r.first_text_s} s)` : ""}${r.judge_s != null ? `, judging ${r.judge_s} s` : ""}.${useLine(r.tokens_in, r.tokens_out, r.cost, r.judge_tokens, r.judge_cost) ? " " + useLine(r.tokens_in, r.tokens_out, r.cost, r.judge_tokens, r.judge_cost) + "." : ""}` }));
+}
+
+// Tokens and cost, where the system or the judge reported them (Nasute records them; it never needs them).
+const money = c => c == null ? null : c < 0.01 ? `US$${c.toFixed(4)}` : `US$${c.toFixed(2)}`;
+function useLine(tin, tout, cost, jtok, jcost) {
+  const parts = [];
+  if (tin != null || tout != null) parts.push(`${tin ?? "?"} tokens in, ${tout ?? "?"} out`);
+  if (cost != null) parts.push(money(cost));
+  if (jtok != null || jcost != null) parts.push(`judging ${jtok ?? "?"} tokens${jcost != null ? `, ${money(jcost)}` : ""}`);
+  return parts.join("; ");
 }
 
 // One entry per question from its rows (one row per repeat). `n` is its place in the results file, which is the dataset's order (shortcut: results are written in dataset order; the id stays the real key, runs are paired by it): its tags, difficulty and the mean of each score over the repeats.
@@ -631,7 +641,7 @@ function run() {
     D.judge_check ? h("p", { class: "small", text: `Marker check (${D.judge_check.dataset.name} v${ver(D.judge_check.dataset.version)}, ${plural(D.judge_check.items, "item")}, ${when(D.judge_check.run.replace("judge-", ""))}): ` +
       SCORES.filter(m => D.judge_check.metrics[m]).map(m => `${name(m)} ${(D.judge_check.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + `.${D.judge_checked_since ? " This check is newer than the run." : ""}${D.judge_check.aborted ? " That check was stopped early." : ""}` }) : null,
     h("p", { class: "small" }, "Download: ", h("a", { href: `${S.run}.csv`, download: "", text: "CSV" }), " · ", h("a", { href: `${S.run}.results.jsonl`, download: "", text: "JSON lines" }), " · ", h("a", { href: `${S.run}.summary.json`, download: "", text: "summary" }), "."),
-    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Marker: ${S.judge_model} (${S.judge_mode}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }));
+    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Marker: ${S.judge_model} (${S.judge_mode}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }));
 
 
   const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1 };

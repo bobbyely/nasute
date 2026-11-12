@@ -59,7 +59,7 @@ The `[judge]` table configures the model that marks the answers. It is kept sepa
 | `url` | `"http://127.0.0.1:8080/v1"` |
 | `model` | `""` (the first model the address lists) |
 | `timeout` | `240` |
-| `mode` | `"quick"` |
+| `mode` | `"quick"` (or `"claims"`, or `"knowledge"` for plain chat models) |
 | `cache` | `false` |
 | `retries` | `2` |
 | `headers` | `{}` |

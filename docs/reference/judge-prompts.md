@@ -53,6 +53,34 @@ CLAIMS:
 {claims}
 ```
 
+## Knowledge mode, one request per answer
+
+For plain chat models that cite no sources: is the reference's key fact there, and is anything false? Extra true detail is fine. The judge answers yes or no and lists false claims; the code turns that into right (1), right with an error (0.5), or wrong (0). Use a judge model at least as capable as the models being judged: it checks claims the reference does not cover from its own knowledge. It is told to check every name, date, number and place one by one, because a hand check (12 Nov 2026) found it missed false details inside lists and later sentences. Tested against a judge-check set of 240 answers labelled by hand (12 Nov 2026): this wording disagreed with the hand labels 10 times, against 13 for the earlier wording. Two other wordings did worse: a yes or no for every detail (17, and replies too long to finish), and listing only suspected claims each with a yes or no (12). Re-run that judge-check before changing it.
+
+```text
+You are checking one answer to a quiz question. Do not give a score.
+1. key_fact: Does the ANSWER itself state the REFERENCE's key fact, in any wording? "yes" or "no". Only count what the ANSWER says in plain text. A tool call, code, or a promise to look it up is "no".
+2. false_claims: Go through every name, date, number and place in the ANSWER one by one, including items in lists and later sentences, and check each. List any claim that is false or contradicts the REFERENCE. Use your own knowledge for claims the REFERENCE does not cover. List a claim only if you believe it is false: if you think it is true, leave it out. Extra detail that is true is fine and is not listed. If you are not sure a claim is false, do not list it. Empty list if none.
+3. answered: Did the ANSWER give an answer at all? "yes", or "no" for a refusal, "I don't know", a bare tool call or empty text.
+Give a few words of reason for each.
+
+QUESTION: {question}
+REFERENCE (the key fact a right answer must state): {reference}
+ANSWER: {answer}
+```
+
+For a question about something made up, knowledge mode asks this instead. Declined scores 1, declined but with a false claim 0.5, made something up 0.
+
+```text
+The QUESTION is about something that does not exist, so a good reply says it does not know. Do not give a score.
+1. verdict: Did the ANSWER decline (say it cannot find it, does not know, or has nothing on it) or make something up (state an answer as if it were known)? "declined" or "made_something_up". Hedging while still giving a specific answer about the made-up subject is "made_something_up".
+2. false_claims: Go through every other name, date, number and place in the ANSWER one by one and check each. List any that is false. List a claim only if you believe it is false. Empty list if none.
+Give a few words of reason for each.
+
+QUESTION: {question}
+ANSWER: {answer}
+```
+
 ## Unanswerable questions
 
 For a question that has no answer in the library, a separate prompt asks only whether the answer declined or made something up.

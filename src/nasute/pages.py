@@ -65,7 +65,7 @@ def slim(s, meta, suite):
     return {"run": s["run"], "profile": s.get("profile", ""), "judge_mode": s.get("judge_mode"), "repeats": s.get("repeats"), "counts_line": s.get("counts_line", ""),
             "aborted": s.get("aborted"), "questions": s.get("questions"), "incomplete": s.get("incomplete"), "dataset": {k: s["dataset"][k] for k in ("name", "version")}, "total_s": s.get("total_s"),
             "metrics": {m: {"mean": v.get("mean"), "ci": v.get("ci")} for m, v in s["metrics"].items()}, "label": meta["labels"].get(s["run"], ""),
-            "baseline": meta["baselines"].get(suite) == s["run"], "answering_model": s.get("answering_model"), "judge_model": s.get("judge_model"), "k": s["settings"].get("k")}
+            "baseline": meta["baselines"].get(suite) == s["run"], "answering_model": s.get("answering_model"), "judge_model": s.get("judge_model"), "k": s["settings"].get("k"), "usage": s.get("usage")}
 
 
 def judge_lines(cfg, sums, run_folder):
@@ -111,7 +111,8 @@ def write(cfg):
             N.run_csv(s, rows, f)
         results = N.folder(cfg["runs"]) / run_id / "results.jsonl"
         guard(folder / f"{run_id}.results.jsonl").write_text(results.read_text() if results.exists() else "")
-        guard(folder / f"{run_id}.summary.json").write_text(json.dumps(N.public(s), indent=1))
+        # usage is only numbers we recorded (tokens, cost), not settings: kept out of public(), which hides anything named like "token"
+        guard(folder / f"{run_id}.summary.json").write_text(json.dumps({**N.public({k: v for k, v in s.items() if k != "usage"}), "usage": s.get("usage")}, indent=1))
 
     target_label = lambda t: str((cfg["targets"].get(t) or {}).get("label") or t)   # a label is only a display name
     sums, meta = N.summaries(cfg), N.run_meta(cfg)

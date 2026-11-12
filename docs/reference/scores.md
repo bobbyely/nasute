@@ -31,10 +31,10 @@ The glossary below gives each score's standard name, its "Key" (the name used in
 | Recall@k | `recall` | share of the right sources found in the top k | expected sources in the top k / expected sources. |
 | MRR (mean reciprocal rank) | `mrr` | how near the top the first right source came | 1 / position of the first expected source (1, 0.5, 0.33, ...), 0 if none. |
 | Faithfulness | `faithfulness` | share of the answer's claims backed by the text it read | claims in the answer backed by the extracts / claims in the answer. |
-| Answer correctness | `correctness` | how well the answer matches the reference answer | Claims mode: F1 = 2 × P × R / (P + R); precision P = answer claims matching the reference / answer claims; recall R = reference facts the answer covers / reference facts. Quick mode: answer claims that agree with the reference / answer claims. |
+| Answer correctness | `correctness` | how well the answer matches the reference answer | Claims mode: F1 = 2 × P × R / (P + R); precision P = answer claims matching the reference / answer claims; recall R = reference facts the answer covers / reference facts. Quick mode: answer claims that agree with the reference / answer claims. Knowledge mode: 1 if the answer states the reference's key fact and nothing false, 0.5 if it states the key fact and something false, 0 otherwise. |
 | Answer relevancy | `relevancy` | does the answer address the question | The judge says yes, partly or no. Counted as 1, 0.5, 0. |
 | Context recall | `context_recall` | share of the reference's facts present in the text it read | reference facts backed by the extracts / facts in the reference. Claims mode only. |
-| Abstention accuracy | `abstention` | says it doesn't know when there's no answer | For questions the library cannot answer: 1 if the judge says the answer declines, 0 if it makes something up. |
+| Abstention accuracy | `abstention` | says it doesn't know when there's no answer | For questions the library cannot answer: 1 if the judge says the answer declines, 0 if it makes something up. Knowledge mode: 0.5 if it declines but states something false. |
 | Precision | `precision` | of what the answer says, how much matches the reference | answer claims matching the reference / all answer claims. |
 | F1 score | `f1` | the balance of precision and recall | 2 × P × R / (P + R). |
 | Standard error | `se` | how much the average would wobble if you drew other questions; smaller is surer | √(variance / n), plus a term for repeats of one question, which are not independent (Miller, eq. 4). |

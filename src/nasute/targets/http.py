@@ -20,7 +20,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULTS = {"url": "", "method": "POST", "headers": {}, "request": {"question": "{question}"}, "answer": "$.answer", "sources": "", "links": "", "extracts": ""}
+# tokens_in, tokens_out, cost: optional paths to the reply's usage figures (OpenAI-style: $.usage.prompt_tokens, $.usage.completion_tokens;
+# OpenRouter adds $.usage.cost in US dollars). Recorded with each answer, never needed.
+DEFAULTS = {"url": "", "method": "POST", "headers": {}, "request": {"question": "{question}"}, "answer": "$.answer", "sources": "", "links": "", "extracts": "",
+            "tokens_in": "", "tokens_out": "", "cost": ""}
+USAGE = ("tokens_in", "tokens_out", "cost")
 STEP = re.compile(r"\.([A-Za-z_][\w-]*)|\[(\d+|\*)\]")
 
 
@@ -111,7 +115,7 @@ def paired_links(reply, spath, lpath, sources):
 def ask(question, cfg, timeout):
     """-> {answer, sources, links, extracts, first_text_s, total_s, error}. Never raises."""
     cfg = {**DEFAULTS, **cfg}
-    out = {"answer": "", "sources": [], "links": [], "extracts": [], "first_text_s": None, "total_s": None, "error": None}
+    out = {"answer": "", "sources": [], "links": [], "extracts": [], "first_text_s": None, "total_s": None, "error": None, **{k: None for k in USAGE}}
     start = time.monotonic()
     try:
         method = cfg["method"].upper()
@@ -130,6 +134,9 @@ def ask(question, cfg, timeout):
                 out[key] = texts([x for f in json_path(reply, cfg[key]) for x in (f if isinstance(f, list) else [f])])
         if cfg["links"] and cfg["sources"]:
             out["links"] = paired_links(reply, cfg["sources"], cfg["links"], out["sources"])
+        for key in USAGE:   # a number, or None when the reply doesn't say
+            got = json_path(reply, cfg[key]) if cfg[key] else []
+            out[key] = got[0] if got and isinstance(got[0], (int, float)) and not isinstance(got[0], bool) else None
     except urllib.error.HTTPError as e:   # first: an HTTPError is also a URLError
         out["error"] = f"HTTP {e.code}: {e.reason}"
     except Exception as e:

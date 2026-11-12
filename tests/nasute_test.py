@@ -116,7 +116,44 @@ def judge_checks():
         nasute.ask_json = lambda cfg, prompt, schema, max_tokens=500, verify=None: next(replies)
         s, why, detail, err = nasute.judge({"question": "q", "reference": "r", "answer": "a", "extracts": ["e"]}, {"judge": {"mode": "claims"}})
         assert err is None and close(s["correctness"], 2 * 0.5 * 1 / 1.5) and s["faithfulness"] == 0.5 and s["relevancy"] == 1.0 and detail["answer_claims"] == ["a1", "a2"], (s, err)
+        # knowledge mode: right, right with an error, wrong, no answer; extra true detail costs nothing
+        def kmarks(key, false, answered="yes"):
+            return {"key_fact": key, "key_fact_why": "k", "false_claims": [{"claim": c, "why": "w"} for c in false], "answered": answered, "answered_why": "a"}
+        item = {"question": "What is the capital of Australia?", "reference": "Canberra", "answer": "Canberra, a planned city chosen in 1908.", "extracts": []}
+        for marks, want, rel in [(kmarks("yes", []), 1.0, 1.0), (kmarks("yes", ["It is in Victoria"]), 0.5, 1.0),
+                                 (kmarks("no", []), 0.0, 1.0), (kmarks("no", [], "no"), 0.0, 0.0)]:
+            nasute.ask_json = lambda cfg, prompt, schema, max_tokens=500, verify=None, m=marks: m
+            s, why, detail, err = nasute.judge(item, {"judge": {"mode": "knowledge"}})
+            assert err is None and s["correctness"] == want and s["relevancy"] == rel and s["faithfulness"] is None and detail["mode"] == "knowledge", (marks, s)
+        assert "Victoria" in nasute.knowledge_scores(kmarks("yes", ["It is in Victoria"]))[1]["correctness"]
+        # knowledge mode, made-up names: declined 1, declined with a false side claim 0.5, made up 0
+        made_up = {"question": "Which novel by Harriet Pellingworth won the 1962 Miles Franklin Award?", "reference": "", "answer": "a", "extracts": [], "answerable": False}
+        for v, want in [({"verdict": "declined", "why": "w", "false_claims": []}, 1.0),
+                        ({"verdict": "declined", "why": "w", "false_claims": [{"claim": "The 1962 winner was The Tree of Man", "why": "w"}]}, 0.5),
+                        ({"verdict": "made_something_up", "why": "w", "false_claims": []}, 0.0)]:
+            nasute.ask_json = lambda cfg, prompt, schema, max_tokens=500, verify=None, v=v: v
+            s, why, detail, err = nasute.judge(made_up, {"judge": {"mode": "knowledge"}})
+            assert err is None and s["abstention"] == want and detail["mode"] == "knowledge", (v, s)
         nasute.ask_json = lambda *a, **k: {"verdicts": []}   # a judge that miscounts is an error, not a guess
+        # the judge's usage: added up per answer; cost stays None when the server never reports one
+        nasute.judge_use_reset()
+        nasute.judge_use_add({"total_tokens": 120, "cost": 0.0001})
+        nasute.judge_use_add({"total_tokens": 30})
+        nasute.judge_use_add(None)
+        assert nasute.JUDGE_USE.tokens == 150 and close(nasute.JUDGE_USE.cost, 0.0001)
+        nasute.judge_use_reset()
+        nasute.judge_use_add({"total_tokens": 10})
+        assert nasute.JUDGE_USE.tokens == 10 and nasute.JUDGE_USE.cost is None
+        nasute.judge_use_reset()
+        nasute.judge_use_add({"total_tokens": "lots", "cost": "x"})   # odd values: ignored, no failure
+        nasute.judge_use_add({})
+        assert nasute.JUDGE_USE.tokens is None and nasute.JUDGE_USE.cost is None   # never reported: not known, not 0
+        # a run's totals: None when nothing reported a figure, so "not known" never shows as 0
+        u = nasute.usage_totals([{"tokens_in": 10, "tokens_out": 5, "cost": 0.001, "judge_tokens": 100, "judge_cost": None},
+                                 {"tokens_in": 30, "tokens_out": 15, "cost": None, "judge_tokens": 50, "judge_cost": None}])
+        assert u["tokens_in"] == 40 and u["tokens_out"] == 20 and close(u["cost"], 0.001) and u["judge_tokens"] == 150 and u["judge_cost"] is None
+        assert u["per_answer"]["tokens_in"] == 20 and u["per_answer"]["judge_cost"] is None
+        assert nasute.usage_totals([])["cost"] is None
         assert nasute.judge({"question": "q", "reference": "r", "answer": "a", "extracts": ["e"]}, {"judge": {"mode": "claims"}})[3] is not None
     finally:
         nasute.ask_json = real
@@ -1211,6 +1248,29 @@ def power_checks():
     assert nasute.power([[0.0], [1.0], [0.5]], cfg)["needed"] > 1 and nasute.power([[0.0, 1.0]] * 3, cfg)["basis"] == "repeats"
 
 
+def http_usage_check():
+    from nasute.targets import http
+    reply = {"choices": [{"message": {"content": "Iron."}}], "usage": {"prompt_tokens": 12, "completion_tokens": 3, "cost": 0.00002}}
+    cfg = {"url": "http://x", "answer": "$.choices[0].message.content", "tokens_in": "$.usage.prompt_tokens",
+           "tokens_out": "$.usage.completion_tokens", "cost": "$.usage.cost"}
+    real = http.urllib.request.urlopen
+    class Fake:
+        def __init__(self, body): self.body = body
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self, *a): return json.dumps(self.body).encode()
+    try:
+        http.urllib.request.urlopen = lambda req, timeout=None: Fake(reply)
+        got = http.ask("q", cfg, 5)
+        assert got["answer"] == "Iron." and got["tokens_in"] == 12 and got["tokens_out"] == 3 and got["cost"] == 0.00002, got
+        got = http.ask("q", {**cfg, "cost": "$.usage.nothing"}, 5)
+        assert got["cost"] is None and got["error"] is None, got
+        got = http.ask("q", {"url": "http://x", "answer": "$.choices[0].message.content"}, 5)
+        assert got["tokens_in"] is None and got["cost"] is None, got
+    finally:
+        http.urllib.request.urlopen = real
+
+
 def docs_checks():
     """The pages in docs/ agree with the code: every relative link lands, every command parses, scores, prompts and settings match."""
     import argparse
@@ -1264,7 +1324,7 @@ def docs_checks():
             assert part in scores, f"scores.md is missing {m}: {part}"
     # judge-prompts.md holds the prompts word for word
     prompts = text[docs / "reference" / "judge-prompts.md"]
-    for name in ("QUICK_ASK", "SPLIT_ASK", "CHECK_ASK", "ABSTAIN_ASK"):
+    for name in ("QUICK_ASK", "SPLIT_ASK", "CHECK_ASK", "KNOWLEDGE_ASK", "KNOWLEDGE_ABSTAIN_ASK", "ABSTAIN_ASK"):
         assert getattr(nasute, name).strip() in prompts, f"judge-prompts.md differs from {name}"
     # settings.md names every setting
     settings = text[docs / "reference" / "settings.md"]
@@ -1550,6 +1610,7 @@ def main():
     review_round_checks()
     interval_checks()
     power_checks()
+    http_usage_check()
     docs_checks()
     version_checks()
     chart_export_link_checks()
