@@ -122,7 +122,7 @@ This small file holds the labels you gave to runs and the baseline of each suite
 
 ## Exports
 
-The report writes these beside each run page and each suite page, and `nasute runs export` writes the same CSV text. Every file is UTF-8 with a header row, with lists such as tags joined by `;`. A text that starts with `=`, `+`, `-` or `@` gets an apostrophe in front, so a spreadsheet does not run it as a formula.
+The report writes these beside each run page and, for every run of a suite, in `report/<dataset>@<target>/runs.csv` (linked from the dataset page), and `nasute runs export` writes the same CSV text. Every file is UTF-8 with a header row, with lists such as tags joined by `;`. A text that starts with `=`, `+`, `-` or `@` gets an apostrophe in front, so a spreadsheet does not run it as a formula.
 
 | File | One row for | Columns |
 | --- | --- | --- |

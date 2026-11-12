@@ -43,7 +43,7 @@ datasets = ["datasets", "/path/to/private/datasets"]
 
 ## How many questions you need
 
-A small dataset gives wide ranges. The "power" line on a suite page says how many questions it would take to see a 0.05 change, and [the statistics](../explanation/statistics.md#power-how-many-questions-do-i-need) explain how that number is worked out.
+A small dataset gives wide ranges. The "power" line on a run page says how many questions it would take to see a 0.05 change, and [the statistics](../explanation/statistics.md#power-how-many-questions-do-i-need) explain how that number is worked out.
 
 ---
 

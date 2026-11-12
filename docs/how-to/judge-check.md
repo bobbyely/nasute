@@ -12,7 +12,7 @@ The command needs a judge set to work from.
 nasute judge-check [--mode quick|claims] [--limit N]
 ```
 
-The judge set is the dataset named by the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`. The check saves its results in `runs/judge-<time>/`. Every normal run then records the newest complete check for its judge and mode (or, if none is complete, the newest stopped one, marked as stopped with `aborted`), and the suite page shows it under "Judge reliability". The `deep` profile can run a fresh check first when `judge_check = true`, but in the starter file it is `false`, so you switch it on once you have a judge set.
+The judge set is the dataset named by the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`. The check saves its results in `runs/judge-<time>/`. Every normal run then records the newest complete check for its judge and mode (or, if none is complete, the newest stopped one, marked as stopped with `aborted`), and the run page shows it under "Judge reliability". The `deep` profile can run a fresh check first when `judge_check = true`, but in the starter file it is `false`, so you switch it on once you have a judge set.
 
 The command prints, for each score, its Accuracy (the share of the judge's marks that landed in the expected range) and its Cohen's kappa (agreement beyond chance), and it lists the marks that were wrong.
 

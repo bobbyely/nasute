@@ -7,20 +7,22 @@ This page lists every Nasute command and option, for readers who already know wh
 Install Nasute with `pipx install nasute` (or `pip install nasute` in a virtual environment) to get the `nasute` command. `python3 -m nasute` does the same.
 
 ```text
-nasute [--config FILE] COMMAND ...
+nasute [--config FILE] [--log text|json] COMMAND ...
 ```
 
-`--config FILE` goes before the command. Without it, Nasute reads `./nasute.toml`, and if there is none it runs on defaults (see [settings](settings.md)). The `run` and `judge-check` commands print one JSON log line per step followed by a plain summary, and the log lines never contain question or answer text. Commands return exit code 0 on success, and where a command can return 1, that is noted below.
+`--config FILE` goes before the command. Without it, Nasute reads `./nasute.toml`, and if there is none it runs on defaults (see [settings](settings.md)).
+
+`--log` also goes before the command and sets how `run` and `judge-check` report their progress. `text` is short lines for a person, such as `[3/24] gold-79 ... right (2.1 s)`, with WARNING or ERROR in front of a failure (in colour at a terminal, unless `NO_COLOR` is set); a run ends with a summary of its measured scores and their 95% ranges, its system errors, its tokens and cost when known, and a link to its report page (under the `report_url` setting when it is set, else a `file://` address). `json` is one JSON object per line, for a program that reads the log: each has `time`, `level`, `app`, `event` and the event's details, and a run ends with a `run_done` event carrying the same summary. Without `--log`, the environment variable `NASUTE_LOG` decides, and without that Nasute writes text at a terminal and JSON when the output goes to a file or a pipe. Either way the log never contains question or answer text: ids, counts, outcomes and scores only. Commands return exit code 0 on success, and where a command can return 1, that is noted below.
 
 ## init
 
 `init` creates a starter folder so that you can begin without writing settings from scratch.
 
 ```text
-nasute init [FOLDER]
+nasute init [FOLDER] [--demo]
 ```
 
-It writes `nasute.toml` and `datasets/example/v1.jsonl` into FOLDER, which defaults to the current folder. It never overwrites anything: if either file already exists it writes nothing, lists the files in the way, and returns 1.
+It writes `nasute.toml` and `datasets/example/v1.jsonl` into FOLDER, which defaults to the current folder. With `--demo` the settings point at `nasute demo-server` (the system, its sources and the judge), so you can try a run without editing anything. It never overwrites anything: if either file already exists it writes nothing, lists the files in the way, and returns 1.
 
 ## run
 
@@ -37,7 +39,7 @@ nasute run [--profile NAME] [--dataset NAME] [--target NAME] [--version V]
 | `--dataset NAME` | The dataset to ask. Without it, Nasute uses the `dataset` setting, and if that is empty, the one dataset whose header names the chosen target. If there is not exactly one, Nasute stops and says so. |
 | `--target NAME` | Ask the dataset's questions of this target instead of the one its header names, which makes a separate suite (`dataset@target`). Without it, the target is the one in the dataset's header. |
 | `--version V` | A dataset version such as `2`, `2.1` or `2.1.0`. The default is the newest. |
-| `--label TEXT` | Names the run as it starts, for example `--label "prompt change"`. It is the same label `runs label` sets, and the suite page marks labelled runs on the charts over time, so you can see where a change happened. |
+| `--label TEXT` | Names the run as it starts, for example `--label "prompt change"`. It is the same label `runs label` sets, and the dataset page marks labelled runs on the charts over time, so you can see where a change happened. |
 | `--limit N` | Ask only the first N questions, where `0` means all. This overrides the profile and the `limit` setting. |
 | `--repeats N` | The number of times each question is asked. This overrides the profile, and `0` is ignored. |
 | `--mode quick\|claims` | The judge mode. This overrides `[judge] mode` and the profile. |

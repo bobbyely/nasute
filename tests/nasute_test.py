@@ -910,14 +910,14 @@ def report_checks():
         check_dir("judge-20260106T000000Z", items=3, aborted="unreachable")      # newer but stopped: not preferred
         out = tmp / "report"
         nasute.report(cfg)
-        suite_t, run2, other = page_data(out / "ds@t" / "index.html"), page_data(out / "ds@t" / "runs" / "20260102T000000Z.html"), page_data(out / "ds@u" / "index.html")
+        suite_t, run2, other = page_data(out / "ds@t" / "runs" / "20260103T000000Z.html"), page_data(out / "ds@t" / "runs" / "20260102T000000Z.html"), page_data(out / "ds@u" / "runs" / "20260104T000000Z.html")
         assert suite_t["judge_check"]["run"] == "judge-20260105T000000Z" and suite_t["judge_checked_since"] and suite_t["judge_check"]["wrong"][0]["id"] == "x1" and suite_t["judge_check"]["dataset"]["name"] == "judge-set", suite_t["judge_check"]
         assert run2["judge_check"]["run"] == "judge-20260105T000000Z" and run2["judge_checked_since"]   # the older run's own record (the 1 Jan check) was superseded
         assert other["judge_check"] is None and not other["judge_checked_since"]
         shutil.rmtree(tmp / "runs" / "judge-20260105T000000Z")
         shutil.rmtree(tmp / "runs" / "judge-20260101T000000Z")
         nasute.report(cfg)
-        assert page_data(out / "ds@t" / "index.html")["judge_check"]["aborted"] == "unreachable"   # only a stopped check is left: shown, and marked
+        assert page_data(out / "ds@t" / "runs" / "20260103T000000Z.html")["judge_check"]["aborted"] == "unreachable"   # only a stopped check is left: shown, and marked
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         cfg = {**nasute.DEFAULTS, "runs": str(tmp / "runs"), "report": str(tmp / "report")}
@@ -936,25 +936,30 @@ def report_checks():
         assert set(suites) == {"ds@mine", "ds@other"} and not (out / "index.json").exists() and not (out / "ds@mine" / "runs" / "stale.html").exists()
         pages = sorted(out.rglob("*.html"))
         names = {str(p.relative_to(out)) for p in pages}
-        assert names == {"index.html", "ds@mine/index.html", "ds@other/index.html", "ds@mine/compare/20260102T000000Z-20260103T000000Z.html"} | \
+        assert names == {"index.html", "datasets/ds.html", "ds@mine/index.html", "ds@other/index.html", "ds@mine/compare/20260102T000000Z-20260103T000000Z.html"} | \
             {f"ds@mine/runs/2026010{i}T000000Z.html" for i in (1, 2, 3)} | {"ds@other/runs/20260104T000000Z.html"}, names
         assets = {p.name for p in (out / "assets").iterdir()}
         assert {"report.js", "report.css", "uPlot.iife.min.js", "uPlot.min.css", "uPlot.LICENSE", "favicon.png", "apple-touch-icon.png"} <= assets
         for p in pages:
             text = p.read_text()
+            if p.name == "index.html" and p.parent != out:   # an old suite address: a page with no script that sends the reader on to the dataset page
+                assert re.findall(r"<script\b", text) == [] and 'content="0; url=../datasets/ds.html#system=' in text, text
+                continue
             m = re.search(r'<script id="data" type="application/json">(.*?)</script>', text, re.S)
             data = json.loads(m.group(1))   # the block ended where we wrote it, whatever the question said
             up = "../" * (len(p.relative_to(out).parts) - 1)
             charts = [f'<script src="{up}assets/chart.umd.min.js">', f'<script src="{up}assets/chartjs-chart-boxplot.umd.min.js">'] if data["page"] == "run" else []   # only run pages draw the question charts
             assert re.findall(r"<script\b[^>]*>", text) == ['<script id="data" type="application/json">', *charts, f'<script src="{up}assets/uPlot.iife.min.js">', f'<script src="{up}assets/report.js">'], p   # no other script in the page
             assert not re.search(r"\son[a-z]+\s*=", text), p   # no inline handlers
-            assert "glossary" in data and data["page"] in ("overview", "suite", "run", "compare")
+            assert "glossary" in data and data["page"] in ("overview", "dataset", "run", "compare")
             if data["page"] == "run" and "q0" in {r["id"] for r in data["rows"]}:
                 assert next(r for r in data["rows"] if r["id"] == "q0")["question"] in (evil, "Question q0?")
         run3 = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (out / "ds@mine" / "runs" / "20260103T000000Z.html").read_text(), re.S).group(1))
         assert run3["rows"][0]["question"] == evil and run3["label"] == evil and run3["vs"] == "20260102T000000Z" and run3["worse"] == ["q0"] and len(run3["rows"]) == 5
-        suite = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (out / "ds@mine" / "index.html").read_text(), re.S).group(1))
-        assert [r["baseline"] for r in suite["runs"]] == [False, True, False] and suite["compare"]["a"] == "20260102T000000Z" and suite["reference"] == "20260102T000000Z"
+        dset = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (out / "datasets" / "ds.html").read_text(), re.S).group(1))
+        mine = [r for r in dset["runs"] if r["target"] == "mine"]
+        assert [r["baseline"] for r in mine] == [False, True, False] and run3["compare"]["a"] == "20260102T000000Z" and run3["vs_baseline"]
+        assert run3["compare_href"] == "../compare/20260102T000000Z-20260103T000000Z.html" and run3["dataset_href"] == "../../datasets/ds.html"
         cmp = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (out / "ds@mine" / "compare" / "20260102T000000Z-20260103T000000Z.html").read_text(), re.S).group(1))
         assert [i["id"] for i in cmp["items"]] == ["q0"] and cmp["items"][0]["a"]["answer"] == "Answer to q0" and cmp["items"][0]["question"] == evil
         # the old run page disappears with its run
@@ -1399,6 +1404,16 @@ for (const v of [0, 0.25, 0.5, 0.75, 1]) for (const id of ["a", "b", "q-9"]) {
   eq(x, nudge(v, id, "x"), "same every time");
 }
 eq(nudge(0.7, "a", "x") === nudge(0.7, "b", "x"), false, "different ids spread");
+// outcomes, as the run page and the compare grid word them: a system error on every attempt wins; a question with no answer is declined or not
+eq([outcome(1, 0, 0, 1), outcome(0.5, 0, 0, 1, "knowledge"), outcome(0.5, 0, 0, 1, "quick"), outcome(0, 0, 0, 1), outcome(0, 0, 1, 1), outcome(0.5, 0, 1, 2), outcome(null, 0, 0, 1)].map(o => o.word),
+  ["right", "right, with an error", "partly right", "wrong", "system error", "partly right", "not judged"], "outcomes");
+eq([outcome(1, 1, 0, 1), outcome(0.5, 1, 0, 1), outcome(0, 1, 0, 1)].map(o => [o.word, o.cls]), [["declined", "good"], ["declined, with an error", "part"], ["made something up", "bad"]], "declined or not");
+eq(outcome(0.8, 0, 0, 1, "quick", 0.9).word, "partly right", "pass_at is the line for right");
+eq([enough([], "c"), enough([{ metrics: { c: { mean: 1 } } }], "c"), enough([{ metrics: { c: { mean: 1 } } }, { metrics: { c: { mean: null } } }], "c"), enough([{ metrics: { c: { mean: 1 } } }, { metrics: { c: { mean: 0 } } }], "c")],
+  [false, false, false, true], "over time needs two runs that measured the score");
+// comparing: runs on two datasets are never like for like; two versions of one dataset are, by name, but not by file
+const R = (name, sha) => ({ dataset: { name, sha256: sha } });
+eq([likeForLike([R("a", 1), R("a", 1)]), likeForLike([R("a", 1), R("b", 2)]), likeForLike([R("a", 1), R("a", 2)]), likeForLike([R("a", 1), R("a", 2)], true)], [true, false, true, false], "like for like");
 for (const [u, ok] of [["https://a.org/x", true], ["http://a.org", true], ["/wiki/content/b/p", true], ["javascript:alert(1)", false], ["data:text/html,x", false], ["//evil.org/x", false], ["/" + String.fromCharCode(92) + "evil.org", false],
   ["  https://a.org", false], ["HTTPS://A.ORG/x", true], ["ftp://a.org", false], ["", false], [null, false], [5, false], ["https://", false], ["vbscript:x", false]]) eq(safeUrl(u) !== null, ok, "safeUrl " + u);
 """
@@ -1460,14 +1475,13 @@ for (const [u, ok] of [["https://a.org/x", true], ["http://a.org", true], ["/wik
         assert code == 0 and printed.splitlines()[0] == ",".join(nasute.SUITE_COLUMNS)
         assert cli(conf, "runs", "export")[0] != 0 and cli(conf, "runs", "export", "--suite", "nope@x")[0] != 0
         # the download links are in the page script, as plain relative <a download> links
-        assert '`${S.run}.csv`' in js and '`${S.run}.results.jsonl`' in js and '`${S.run}.summary.json`' in js and 'href: "runs.csv"' in js and js.count("download:") >= 4
-        # the question charts: only on the suite page, from a small block of per-question data without answers
-        suite, run = page_data(out / "index.html"), page_data(out / "runs" / "20260102T000000Z.html")
-        assert suite["suite"]["target_label"] == "The System"
-        assert "latest_rows" not in suite and "causes" in suite["latest"]
-        assert "chart.umd.min.js" not in (out / "index.html").read_text() and (out / "runs" / "20260102T000000Z.html").read_text().count("chart.umd.min.js") == 1 and "chart.umd.min.js" not in (tmp / "report" / "index.html").read_text()
+        assert '`${S.run}.csv`' in js and '`${S.run}.results.jsonl`' in js and '`${S.run}.summary.json`' in js and 'runs.csv`' in js and js.count("download:") >= 4
+        # the question charts: only on the run page
+        run = page_data(out / "runs" / "20260102T000000Z.html")
+        assert run["suite"]["target_label"] == "The System" and "causes" in run["summary"]
+        assert (out / "runs" / "20260102T000000Z.html").read_text().count("chart.umd.min.js") == 1 and "chart.umd.min.js" not in (tmp / "report" / "index.html").read_text() and "chart.umd.min.js" not in (tmp / "report" / "datasets" / "ds.html").read_text()
         ov = page_data(tmp / "report" / "index.html")
-        assert ov["suites"][0]["target_label"] == "The System" and "SECRET" not in json.dumps(ov) and "secret.host" not in json.dumps(ov) and "Authorization" not in json.dumps(ov)
+        assert ov["runs"][0]["target_label"] == "The System" and "SECRET" not in json.dumps(ov) and "secret.host" not in json.dumps(ov) and "Authorization" not in json.dumps(ov)
         assert (PKG / "assets" / "chart.umd.min.js").exists() and (PKG / "assets" / "chartjs-chart-boxplot.umd.min.js").exists() and (tmp / "report" / "assets" / "chart.umd.min.js").exists()
 
     # source links: the http target reads them from a path, parallel to the sources
@@ -1521,7 +1535,7 @@ def label_checks():
         nasute.set_label(cfg, "20260102T000000Z", "prompt change")
         assert nasute.run_meta(cfg)["labels"] == {"20260102T000000Z": "prompt change"}
         nasute.report(cfg)
-        data = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (tmp / "report" / "ds@t" / "index.html").read_text(), re.S).group(1))
+        data = json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', (tmp / "report" / "datasets" / "ds.html").read_text(), re.S).group(1))
         assert [r["label"] for r in data["runs"]] == ["", "prompt change"]
         nasute.set_label(cfg, "20260102T000000Z", "")
         assert nasute.run_meta(cfg)["labels"] == {}
@@ -1532,6 +1546,120 @@ def label_checks():
             except SystemExit as e:
                 assert e.code == 0
         assert "--label" in (ROOT / "docs" / "reference" / "commands.md").read_text()
+
+
+def dashboard_checks():
+    """The dashboard, the dataset page and the run page: scores with nothing to show are left out, the old suite address
+    still leads somewhere, and runs on one dataset carry what the browser needs to compare them."""
+    import re
+    page_data = lambda path: json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', path.read_text(), re.S).group(1))
+    # a system error in knowledge mode scores 0 only on what that mode measures: no faithfulness (it once showed as 0.00)
+    real = nasute.TARGETS.get("fake")
+    nasute.TARGETS["fake"] = lambda q, tcfg, timeout: {"answer": "", "sources": [], "extracts": [], "first_text_s": None, "total_s": 0, "error": "TimeoutError: slow"}
+    try:
+        cfg = nasute.merge(nasute.DEFAULTS, {"judge": {"mode": "knowledge"}})
+        rows = nasute.attempts(cfg, "fake", {"id": "x", "question": "Q?", "reference": "r", "sources": ["S"], "answerable": True, "tags": [], "difficulty": "easy"}, {})
+        assert rows[0]["scores"]["faithfulness"] is None and rows[0]["scores"]["correctness"] == 0.0 and rows[0]["scores"]["relevancy"] == 0.0, rows[0]["scores"]
+    finally:
+        nasute.TARGETS["fake"] = real
+    # measured: strict zeros alone, or source scores from a system that names no source, are not measured; error rate always is
+    r = lambda err=None, sources=(), **s: {"error": err, "sources": list(sources), "scores": {m: s.get(m) for m in nasute.METRICS}}
+    assert nasute.measured([r(correctness=1.0, hit=0.0, error_rate=0.0), r("x", correctness=0.0, faithfulness=0.0, hit=0.0, error_rate=1.0)]) == ["correctness", "error_rate"]
+    assert nasute.measured([r(sources=["A"], hit=0.0, correctness=1.0, error_rate=0.0)]) == ["hit", "correctness", "error_rate"]   # a real miss is a score
+    assert nasute.measured([r("x", correctness=0.0, error_rate=1.0)]) == ["correctness", "error_rate"]   # every attempt failed: the zeros are all there is
+
+    d1, d2 = {"name": "ds", "version": 1, "sha256": "aaa"}, {"name": "other", "version": 1, "sha256": "bbb"}
+    five = lambda x, **more: {f"q{i}": {"correctness": x, "hit": 0.0, "error_rate": 0.0, **more} for i in range(5)}
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        cfg = {**nasute.DEFAULTS, "runs": str(tmp / "runs"), "report": str(tmp / "report"), "targets": {"rag": {"label": "The RAG"}, "chat": {}}}
+        fake_run(cfg, "20260101T000000Z", d1, five(0.5), target="rag", usage={"cost": 0.01, "per_answer": {"cost": 0.002}})
+        fake_run(cfg, "20260102T000000Z", d1, five(0.7), target="rag")
+        fake_run(cfg, "20260103T000000Z", d1, {**five(0.9), "q4": {"correctness": 0.0, "faithfulness": 0.0, "hit": 0.0, "error_rate": 1.0, "error": "TimeoutError"}}, target="chat")
+        fake_run(cfg, "20260104T000000Z", d2, five(1.0), target="chat")
+        nasute.report(cfg)
+        out = tmp / "report"
+        # the run page: hit (no sources named) and faithfulness (only on the failed attempt) are gone, from the scores and the rows
+        run = page_data(out / "ds@chat" / "runs" / "20260103T000000Z.html")
+        assert run["summary"]["measured"] == ["correctness", "error_rate"] and run["summary"]["metrics"]["hit"]["mean"] is None and run["summary"]["metrics"]["faithfulness"]["mean"] is None
+        assert all(x["scores"]["hit"] is None and x["scores"]["faithfulness"] is None for x in run["rows"]) and run["summary"]["metrics"]["correctness"]["mean"] is not None
+        assert json.loads((out / "ds@chat" / "runs" / "20260103T000000Z.summary.json").read_text())["metrics"]["hit"]["mean"] == 0.0   # the download keeps what was saved
+        # the dataset page: every run of both systems, each with a question-by-question entry; a pair of runs on the same file has its paired test
+        ds = page_data(out / "datasets" / "ds.html")
+        assert [x["run"] for x in ds["runs"]] == ["20260101T000000Z", "20260102T000000Z", "20260103T000000Z"] and {s["target"] for s in ds["systems"]} == {"rag", "chat"}
+        assert ds["grid"]["20260103T000000Z"]["q4"] == [0.0, 0, 1, 1] and ds["grid"]["20260101T000000Z"]["q0"] == [0.5, 0, 0, 1] and ds["questions"]["q0"] == "Question q0?"
+        pair = ds["paired"]["20260101T000000Z 20260102T000000Z"]
+        assert pair["shared"] == 5 and pair["metrics"]["correctness"]["delta"] > 0 and "hit" not in pair["metrics"] and len(ds["paired"]) == 3, pair
+        assert ds["runs"][0]["usage"]["per_answer"]["cost"] == 0.002 and ds["runs"][0]["answer_s"] == 2.0 and ds["runs"][0]["target_label"] == "The RAG"
+        # the dashboard: each dataset with its systems' latest runs; recent runs newest first, across datasets
+        ov = page_data(out / "index.html")
+        assert [(d["name"], d["href"], d["runs"], [x["run"] for x in d["latest"]]) for d in ov["datasets"]] == [("ds", "datasets/ds.html", 3, ["20260102T000000Z", "20260103T000000Z"]), ("other", "datasets/other.html", 1, ["20260104T000000Z"])]
+        assert [x["run"] for x in ov["runs"]] == ["20260104T000000Z", "20260103T000000Z", "20260102T000000Z", "20260101T000000Z"] and ov["runs"][0]["dataset"]["name"] == "other"
+        # the old suite address sends the reader on, with the system named so the over-time charts open on it
+        old = (out / "ds@rag" / "index.html").read_text()
+        assert 'http-equiv="refresh" content="0; url=../datasets/ds.html#system=rag"' in old and "<script" not in old
+        assert (out / "ds@rag" / "runs.csv").exists()
+        # the page script hides what has nothing in it: the scatter without faithfulness, over-time charts under two runs
+        js = (PKG / "assets" / "report.js").read_text()
+        assert "q.means.faithfulness != null && q.means.correctness != null) ? scatterFigure" in js and "enough(rs, k)" in js and "sys = D.systems.filter(s => twoPlus(" in js
+
+
+def init_demo_checks():
+    """`nasute init --demo` writes settings that point at the demo server, so the quick start needs no editing."""
+    import contextlib
+    import io
+    with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+        assert nasute.main(["init", f"{tmp}/d", "--demo"]) is None
+        cfg = nasute.load_settings(f"{tmp}/d/nasute.toml")
+        assert cfg["targets"]["mine"]["url"] == "http://127.0.0.1:8700/ask" and cfg["judge"]["url"] == "http://127.0.0.1:8700/v1" and cfg["targets"]["mine"]["sources"] == "$.sources[*].title"
+        assert nasute.main(["init", f"{tmp}/e"]) is None and nasute.load_settings(f"{tmp}/e/nasute.toml")["targets"]["mine"]["url"] == "http://127.0.0.1:8000/ask"
+
+
+def logging_checks():
+    """How a run reads at a terminal and to a log reader, and the summary it ends with."""
+    import io
+    import logging
+    rec = lambda event, level=logging.INFO, **d: logging.LogRecord("x", level, __file__, 1, event, None, None) if not d else setattr(r := logging.LogRecord("x", level, __file__, 1, event, None, None), "details", d) or r
+    plain = nasute.Readable(colour=False)
+    assert plain.format(rec("question_done", n=3, of=24, id="gold-79", repeat=1, repeats=1, outcome="right", error=None, judge_error=None, total_s=2.1)) == "[3/24] gold-79 ... right (2.1 s)"
+    line = plain.format(rec("question_done", logging.WARNING, n=4, of=24, id="q9", repeat=2, repeats=3, outcome="system error", error="TimeoutError: slow", judge_error=None, total_s=180))
+    assert line == "WARNING [4/24] q9 (repeat 2) ... system error: TimeoutError: slow (180 s)", line
+    assert nasute.Readable(colour=True).format(rec("run_aborted", logging.ERROR, run="r", why="down")).startswith("\033[31;1mERROR\033[0m run aborted: run r, why down")
+    assert plain.format(rec("odd_event", note=1)) == "odd event: note 1" and plain.format(rec("question_done", id="x")).startswith("question_done: ")   # missing details still print
+    assert json.loads(nasute.JsonLines().format(rec("question_done", id="x", n=1)))["event"] == "question_done"
+    # the look: asked for, else NASUTE_LOG, else text at a terminal and JSON lines anywhere else (the tests' stdout is not a terminal)
+    import os
+    was = os.environ.pop("NASUTE_LOG", None)
+    try:
+        assert nasute.setup_logging("text") == "text" and isinstance(logging.getLogger().handlers[0].formatter, nasute.Readable)
+        os.environ["NASUTE_LOG"] = "json"
+        assert nasute.setup_logging() == "json" and isinstance(logging.getLogger().handlers[0].formatter, nasute.JsonLines)
+        del os.environ["NASUTE_LOG"]
+        tty = sys.stdout.isatty()
+        assert nasute.setup_logging() == ("text" if tty else "json") and len(logging.getLogger().handlers) == 1
+    finally:
+        nasute.setup_logging("json")
+        if was is not None:
+            os.environ["NASUTE_LOG"] = was
+    # outcome words, the same rule as the page script's outcome()
+    row = lambda c=None, a=None, err=None, answerable=True: {"error": err, "answerable": answerable, "scores": {"correctness": c, "abstention": a}}
+    assert [nasute.outcome_word(x, 0.75, "knowledge") for x in (row(1.0), row(0.5), row(0.0), row(err="x"), row(a=1.0, answerable=False), row(a=0.0, answerable=False), row())] == \
+        ["right", "right, with an error", "wrong", "system error", "declined", "made something up", "not judged"]
+    assert nasute.outcome_word(row(0.5), 0.75, "quick") == "partly right"
+    # the summary a run ends with: measured scores with their ranges, errors, tokens and cost, and the link to its page
+    base = lambda i: {"id": i, "repeat": 1, "tags": ["t"], "difficulty": "easy", "judge_error": None, "reasons": {}, "judge_detail": None, "answerable": True, "first_text_s": None, "total_s": 1.0, "sources": []}
+    rows = [{**base("q1"), "error": None, "scores": {**{m: None for m in nasute.METRICS}, "correctness": 1.0, "hit": 0.0, "error_rate": 0.0}},
+            {**base("q2"), "error": "TimeoutError", "scores": {**{m: None for m in nasute.METRICS}, "correctness": 0.0, "hit": 0.0, "faithfulness": 0.0, "error_rate": 1.0}}]
+    summary = nasute.summarise(rows, {"name": "ds", "version": 1, "sha256": "a"}, {**nasute.DEFAULTS, "profile": ""}, {"run": "20260101T000000Z", "target": "t", "total_s": 12.3, "usage": nasute.usage_totals([{"tokens_in": 10, "tokens_out": 20, "judge_cost": 0.001}])})
+    summary["failures"] = [{"id": "q2", "error": "TimeoutError"}]
+    lines = nasute.run_summary(summary, rows, "file:///r/ds@t/runs/20260101T000000Z.html")
+    text = "\n".join(lines)
+    assert "Run 20260101T000000Z finished in 12 s: 2 asked" in text and "Answer correctness  0.50  (95% range " in text and "Error rate" in text and "Hit rate" not in text and "Faithfulness" not in text, text
+    assert "System errors: 1 (q2)" in text and "Used: 10 tokens in, 20 out; judging US$0.0010" in text and lines[-1] == "Report: file:///r/ds@t/runs/20260101T000000Z.html", text
+    cfg = {**nasute.DEFAULTS, "report": "/tmp/r"}
+    assert nasute.report_link(cfg, summary) == Path("/tmp/r/ds@t/runs/20260101T000000Z.html").resolve().as_uri()
+    assert nasute.report_link({**cfg, "report_url": "https://reports.example.org/nasute/"}, summary) == "https://reports.example.org/nasute/ds@t/runs/20260101T000000Z.html"
+    assert "--log" in (ROOT / "docs" / "reference" / "commands.md").read_text() and "report_url" in (ROOT / "README.md").read_text() + (ROOT / "docs" / "reference" / "settings.md").read_text()
 
 
 def main():
@@ -1623,6 +1751,9 @@ def main():
     version_checks()
     chart_export_link_checks()
     label_checks()
+    dashboard_checks()
+    logging_checks()
+    init_demo_checks()
     print("nasute checks passed")
 
 

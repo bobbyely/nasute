@@ -22,7 +22,9 @@ This guide is for the moment when you have two candidate systems, perhaps two mo
 
 Two runs can be compared when they used the same dataset file, meaning the same SHA-256 fingerprint, whatever their targets. `compare` pairs the questions of the two runs and prints, for each score, both means, the change, its 95% CI (range) and a verdict of real gain, real drop or within noise. It then lists the questions that got worse or better, and when the targets differ it adds a note saying "same questions, different targets".
 
-Comparing by run ids is the only way to compare across targets. A baseline, and `nasute compare` with no ids, stay inside one suite, and the report's compare pages do too, so a model-against-model comparison is a command-line result.
+A baseline, and `nasute compare` with no ids, stay inside one suite. In the report you can compare across targets too: open the dataset's page, tick the two runs in its list of runs, and press Compare. You get the headline scores side by side, the same paired test as `nasute compare` (for up to the 30 newest runs of the dataset file), and a question-by-question grid of outcomes, by default only where the runs differ. You can tick more than two runs; the paired test is for two.
+
+On the dashboard you can also tick runs on different datasets. They asked different questions, so the report shows only their headline scores, cost and speed side by side, with a note that this is not a like-for-like test.
 
 Nasute prints "not comparable" and gives no verdicts when the dataset file differs, when a run stopped early, or when both runs name different profiles. For judged scores the judge model must also be the same, because scores from different judges are not comparable, so use the same judge and the same profile for both runs. With fewer than 5 shared questions there is no verdict either, and each score shows "too few questions".
 
