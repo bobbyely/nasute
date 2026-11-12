@@ -8,6 +8,11 @@
   to compare them question by question, with the paired test for two. The run page holds the numbers: the answer and
   headline scores first, then every question with its outcome (right, partly right, wrong, declined, made something up,
   system error), then the charts. The old suite pages send the reader on to the dataset page.
+- The run page opens with "At a glance": a stacked bar of outcomes for each difficulty (right, right with an error, wrong,
+  system error; declined, made something up), in colour-blind-safe colours; tap a block to list those questions. On a
+  phone the question list stops at 10 with "Show all". The charts gain one "Group by" picker (difficulty, each tag, topic,
+  cause) for score by group (a strip of dots when scores take three values or fewer, else a box), seconds, tokens out and
+  cost per answer, and a scatter of score against seconds.
 - A score with nothing to show is left out of the report and the run summary instead of showing as 0.00: source scores
   when the system names no sources, and scores set only on failed attempts. Charts with nothing in them are left out.
 - Fixed: in knowledge mode a system error scored Faithfulness 0, a score that mode never measures.

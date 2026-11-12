@@ -249,6 +249,24 @@ function outcome(v, unanswerable, errors, attempts, mode, P = 0.75) {
 }
 // A trend needs two points: the over-time chart of a score is drawn only when at least two runs measured it.
 const enough = (rs, m) => rs.filter(r => r.metrics[m] && r.metrics[m].mean != null).length >= 2;
+// The at-a-glance bars: how many questions in each group had each outcome. It counts q.out, the outcome the question list shows,
+// so the bars and the list never disagree. groupsOf(q) gives a list: a question in two groups counts in both. -> [[group, {word: count}]].
+function outcomeCounts(qs, groupsOf) {
+  const out = new Map();
+  for (const q of qs) for (const g of groupsOf(q)) { if (!out.has(g)) out.set(g, {}); const c = out.get(g); c[q.out.word] = (c[q.out.word] || 0) + 1; }
+  return [...out];
+}
+// How to draw one group of a distribution chart. Scores often take only 0, 0.5 and 1, and a box of those is a line with dots on it,
+// so a group of scores with three values or fewer is a strip (dots and a ring for the mean). Otherwise a box from four questions, else dots.
+const FEW_VALUES = 3;
+const distKind = (values, score) => score && new Set(values).size <= FEW_VALUES ? "strip" : values.length >= 4 ? "box" : "dots";
+// Which distribution charts a run gets. The score chart needs two questions; seconds, tokens and cost need some question with a value;
+// the score-against-seconds scatter needs a question with both. A value not measured is null and is left out, never drawn as 0.
+function distCharts(qs, score) {
+  const scored = q => score != null && q.means[score] != null;
+  return [qs.length > 1 && qs.some(scored) ? "score" : null, ...["seconds", "tokens", "cost"].filter(k => qs.some(q => q.per[k] != null)),
+    qs.some(q => scored(q) && q.per.seconds != null) ? "speed" : null].filter(Boolean);
+}
 // stats:end
 
 const GROUPERS = {
@@ -306,7 +324,7 @@ function keyboard(canvas, chart, say, open) {
 }
 // A click on a dot: with a mouse it opens at once; on a touch screen the first tap only shows the tooltip.
 const tapGate = open => { let armed = null; return id => { if (coarse.matches && armed !== id) { armed = id; return; } armed = null; open(id); }; };
-const dotLines = (q, lines, who) => [...(who ? [who] : []), ...wrapText(shorten(q.reps[0].question)), "", ...lines.map(([v, m]) => `${f2(v)}  ${m}`), ...(q.cause ? [`${q.cause}  cause`] : [])];
+const dotLines = (q, lines, who) => [...(who ? [who] : []), ...wrapText(shorten(q.reps[0].question)), "", ...lines.map(([v, m]) => `${typeof v === "string" ? v : f2(v)}  ${m}`), ...(q.cause ? [`${q.cause}  cause`] : [])];
 const hint = () => coarse.matches ? "Tap again to open the question" : "Click to open the question";
 const ticks01 = ax => { ax.ticks = [0, 0.25, 0.5, 0.75, 1].map(value => ({ value })); };
 const tickText = v => String(v);   // Chart.js would round 0.25 to 0.3
@@ -366,54 +384,104 @@ function scatterFigure(qs, open) {
   return { el: fig, draw: () => { try { draw(); } catch (e) { fig.append(h("p", { class: "no", text: "This chart could not be drawn." })); throw e; } } };
 }
 
-// Hover for the box plots: a dot if the pointer is on one, otherwise the box summary for the group's whole column. Boxes are thin,
-// dots cover them and a group where every question scored the same has a box of no width, so hitting the box itself is too fiddly.
-if (window.Chart && !Chart.Interaction.modes.boxRow) Chart.Interaction.modes.boxRow = (chart, e, opts, useFinal) => {
-  const dots = Chart.Interaction.modes.nearest(chart, e, { intersect: true }, useFinal).filter(x => x.datasetIndex === 1);
-  if (dots.length) return dots;
-  const a = chart.chartArea, row = Math.round(chart.scales.x.getValueForPixel(e.x)), el = chart.getDatasetMeta(0).data[row];
-  const box = chart.data.datasets[0].data[row];   // a group's statistics, or [] when it is too small for a box
-  return e.y >= a.top && e.y <= a.bottom && el && box && !Array.isArray(box) ? [{ element: el, datasetIndex: 0, index: row }] : [];
-};
+// Distribution charts: the score, seconds, tokens out and cost of each question, by one group the reader picks (difficulty, each tag,
+// topic, cause), and a scatter of score against seconds. One picker drives them all. Groups run down the page, so a long list of tags
+// still fits a phone: the chart grows taller, never wider.
 const boxScores = qs => ["correctness", "abstention", "faithfulness", "relevancy", "hit", "mrr"].filter(m => qs.some(q => q.means[m] != null));
-function boxFigure(qs, open) {
-  const scores = boxScores(qs);
-  const st = { score: scores[0], by: "difficulty" };
-  const canvas = h("canvas", { tabindex: "0", role: "img" }), wrap = h("div", { class: "plot" }, canvas), note = h("p", { class: "caption" }), live = h("p", { class: "sr", "aria-live": "polite" }), alt = h("div"), gate = tapGate(open);
+// What the questions can be grouped by. A question with two tags is in both tag groups.
+function categories(qs) {
+  return [["difficulty", "difficulty", q => [q.difficulty || "unknown"]],
+    qs.some(q => q.tags.length) && ["tag", "tag", q => q.tags.length ? q.tags : ["untagged"]],
+    qs.some(q => q.topic) && ["topic", "topic", q => [q.topic || "untagged"]],
+    qs.some(q => q.cause) && ["cause", "cause of failure", q => [q.cause || "none"]]].filter(Boolean);
+}
+const groupRank = k => k in DIFF ? DIFF[k] : NEUTRAL[k] ? 1e9 : 10;   // easy to hard first, grey groups last, the rest biggest first
+const groupName = k => NEUTRAL[k] || k;
+// The groups of one chart, each with its questions that have a value. A group with no values is left out.
+function groupRows(qs, groupsOf, valueOf) {
+  const m = new Map();
+  for (const q of qs) { const v = valueOf(q); if (v != null) for (const g of groupsOf(q)) { if (!m.has(g)) m.set(g, []); m.get(g).push({ q, v }); } }
+  return [...m].map(([key, items]) => ({ key, items })).sort((a, b) => groupRank(a.key) - groupRank(b.key) || b.items.length - a.items.length || a.key.localeCompare(b.key));
+}
+const whole = v => String(Math.round(v));
+const MEASURES = {
+  score: { title: "Score", axis: st => name(st.score), value: (q, st) => q.means[st.score], fmt: f2 },
+  seconds: { title: "Seconds per answer", axis: () => "Seconds per answer (the system's time)", value: q => q.per.seconds, fmt: v => secs(v) },
+  tokens: { title: "Tokens out", axis: () => "Tokens in the answer", value: q => q.per.tokens, fmt: whole },
+  cost: { title: "Cost per answer", axis: () => "Cost per answer", value: q => q.per.cost, fmt: v => money(v) },
+};
+const rowHeight = n => 64 + n * (n > 6 ? 26 : 38);
+const valueAxis = (T, text, score, fmt) => ({ ...(score ? { min: -0.04, max: 1.04, afterBuildTicks: ticks01 } : { beginAtZero: true }), title: { display: true, text, color: T.quiet, font: { family: T.font } },
+  grid: { color: T.rule }, border: { color: T.rule }, ticks: { color: T.quiet, font: { family: T.font }, maxTicksLimit: 6, callback: score ? tickText : fmt } });
+
+function distFigure(kind, st, qs, open) {
+  const M = MEASURES[kind], score = kind === "score", head = h("h3"), canvas = h("canvas", { tabindex: "0", role: "img" }), wrap = h("div", { class: "plot" }, canvas),
+    note = h("p", { class: "caption" }), live = h("p", { class: "sr", "aria-live": "polite" }), alt = h("div"), gate = tapGate(open);
   let chart = null;
   const draw = () => {
-    const T = theme(), [gName, get, order] = GROUPERS[st.by], sN = name(st.score), byKey = new Map();
-    for (const q of qs) if (q.means[st.score] != null) { const k = get(q); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(q); }
-    const rows = [...byKey].map(([key, items]) => ({ key, items, s: boxStats(items.map(q => q.means[st.score])) }));
-    const rank = k => order && order.includes(k) ? order.indexOf(k) : 99;
-    rows.sort(order ? (a, b) => rank(a.key) - rank(b.key) : (a, b) => a.s.mean - b.s.mean || a.key.localeCompare(b.key));   // weakest group first, easy to hard for difficulty
-    const many = rows.length > (innerWidth < 700 ? 4 : 12);   // with many groups only the name fits under each box, slanted; n and mean move to the hover
-    const label = r => many ? shorten(NEUTRAL[r.key] || r.key, 12) : [shorten(NEUTRAL[r.key] || r.key, 12), `n = ${r.s.n}`, `mean ${f2(r.s.mean)}`];
-    const dots = rows.flatMap((r, i) => r.items.map(q => ({ x: i + jitter(q.id, "x") * 0.5, y: q.means[st.score], o: i * 10 + q.means[st.score], q, s: q.means[st.score] })));
-    note.textContent = `Weakest group on the left${order ? " (easy to hard)" : ""}. Tukey box plot: box = interquartile range (IQR, Q1 to Q3, the middle half of questions); line = median; ring = mean; whiskers = the furthest question within 1.5 × IQR of the box; dots beyond them are outliers. A box needs n ≥ 4; with fewer, only the dots show.`;
-    // the boxes are given our own numbers (below), so the box, the whiskers and the tooltip cannot disagree: the plugin's own whisker rule has a 0.01 tolerance
+    const T = theme(), aN = M.axis(st), rows = groupRows(qs, st.cat[2], q => M.value(q, st));
+    for (const r of rows) { const v = r.items.map(i => i.v); r.s = boxStats(v); r.kind = distKind(v, score); }
+    head.textContent = `${M.title} by ${st.cat[1]}`;
+    wrap.style.height = rowHeight(rows.length) + "px";
+    const dots = rows.flatMap((r, i) => r.items.map(({ q, v }) => ({ x: v, y: i + jitter(q.id, kind) * (r.kind === "box" ? 0.3 : 0.6), o: i * 1e9 + v, q, v })));
+    const rings = rows.flatMap((r, i) => r.kind === "strip" ? [{ x: r.s.mean, y: i }] : []);
+    note.textContent = (score ? `Few values (${FEW_VALUES} or fewer): dots, ring = mean. ` : "") + "Box: the middle half, line = median, ring = mean, whiskers to 1.5 × the box. Under four questions: dots only." +
+      (st.cat[0] === "tag" ? " A question with two tags is in both groups." : "");
     chart && chart.destroy();
     chart = new Chart(canvas, { type: "boxplot", data: { labels: rows.map((_, i) => i), datasets: [
-      { label: "boxes", data: rows.map(r => r.s.n >= 4 ? { min: r.s.min, q1: r.s.q1, median: r.s.median, q3: r.s.q3, max: r.s.max, mean: r.s.mean, whiskerMin: r.s.lo, whiskerMax: r.s.hi, items: [], outliers: [] } : []), itemRadius: 0, outlierRadius: 0, backgroundColor: T.accent + "26", borderColor: T.ink, borderWidth: 1.5, medianColor: T.ink,
-        meanRadius: 4, meanBackgroundColor: T.paper, meanBorderColor: T.ink, meanBorderWidth: 1.5, maxBarThickness: 56, coef: 1.5 },
-      { type: "scatter", label: "questions", data: dots, dots: true, parsing: false, backgroundColor: T.accent + "cc", borderColor: T.paper, borderWidth: 1.5, pointRadius: 4.5, pointHoverRadius: 7, pointHitRadius: 10 }] },
-    options: { animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: "boxRow", intersect: true },
-      scales: { y: { min: -0.04, max: 1.04, afterBuildTicks: ticks01, title: { display: true, text: sN, color: T.quiet, font: { family: T.font } }, grid: { color: T.rule }, border: { color: T.rule }, ticks: { color: T.quiet, font: { family: T.font }, callback: tickText } },
-        x: { type: "linear", min: -0.5, max: rows.length - 0.5, afterBuildTicks: ax => { ax.ticks = rows.map((_, value) => ({ value })); }, grid: { display: false }, border: { color: T.rule }, ticks: { color: T.ink, font: { family: T.font, size: 12 }, padding: 6, minRotation: many ? 40 : 0, maxRotation: many ? 40 : 0, autoSkip: false, callback: v => rows[v] ? label(rows[v]) : "" } } },
-      onClick: (_, els) => { const e = els.find(x => x.datasetIndex === 1); if (e) gate(dots[e.index].q.id); },
-      plugins: { legend: { display: false }, tooltip: { ...T.tip, callbacks: {
-        title: c => c[0].datasetIndex === 1 ? c[0].raw.q.id : NEUTRAL[rows[c[0].dataIndex].key] || rows[c[0].dataIndex].key,
-        label: c => { if (c.datasetIndex === 1) return dotLines(c.raw.q, [[c.raw.s, sN]]); const r = rows[c.dataIndex], s = r.s, out = r.items.filter(q => q.means[st.score] < s.lo || q.means[st.score] > s.hi).map(q => q.id);
-          return [`n = ${s.n}`, `Median ${f2(s.median)}`, `Mean ${f2(s.mean)}`, `IQR ${f2(s.q1)} to ${f2(s.q3)} (Q1 to Q3)`, `Whiskers ${f2(s.lo)} to ${f2(s.hi)} (1.5 × IQR)`,
-            out.length ? `Outliers ${out.length}: ${shorten(out.join(", "), 40)}` : "Outliers 0"]; },
-        footer: c => c[0].datasetIndex === 1 ? hint() : "" } } } } });
-    canvas.setAttribute("aria-label", `${sN} by ${gName.toLowerCase()}, ${rows.length} groups, ${dots.length} questions. Arrow keys move between dots, Enter opens the question.`);
-    alt.replaceChildren(textAlt(`${sN} by ${gName.toLowerCase()}.`, [gName, "Questions", "Median", "Mean", "Middle half"], rows.map(r => [NEUTRAL[r.key] || r.key, r.s.n, f2(r.s.median), f2(r.s.mean), `${f2(r.s.q1)} to ${f2(r.s.q3)}`])));
+      { label: "boxes", data: rows.map(r => r.kind === "box" ? { min: r.s.min, q1: r.s.q1, median: r.s.median, q3: r.s.q3, max: r.s.max, mean: r.s.mean, whiskerMin: r.s.lo, whiskerMax: r.s.hi, items: [], outliers: [] } : []),
+        itemRadius: 0, outlierRadius: 0, backgroundColor: T.accent + "26", borderColor: T.ink, borderWidth: 1.5, medianColor: T.ink, meanRadius: 5, meanBackgroundColor: "transparent", meanBorderColor: T.ink, meanBorderWidth: 2, maxBarThickness: 26, coef: 1.5 },
+      { type: "scatter", label: "means", data: rings, parsing: false, backgroundColor: "transparent", borderColor: T.ink, borderWidth: 2, pointRadius: 7, pointHoverRadius: 7, pointHitRadius: 0 },
+      { type: "scatter", label: "questions", data: dots, dots: true, parsing: false, backgroundColor: T.accent + "b3", borderColor: T.paper, borderWidth: 1, pointRadius: 4, pointHoverRadius: 7, pointHitRadius: 8 }] },
+    options: { indexAxis: "y", animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: "nearest", intersect: true },
+      scales: { x: valueAxis(T, aN, score, M.fmt),
+        y: { type: "linear", reverse: true, min: -0.5, max: rows.length - 0.5, afterBuildTicks: ax => { ax.ticks = rows.map((_, value) => ({ value })); }, grid: { display: false }, border: { color: T.rule },
+          ticks: { color: T.ink, font: { family: T.font, size: 12 }, autoSkip: false, callback: v => rows[v] ? `${shorten(groupName(rows[v].key), 16)} · ${rows[v].s.n}` : "" } } },
+      onClick: (_, els) => { const e = els.find(x => x.datasetIndex === 2); if (e) gate(dots[e.index].q.id); },
+      plugins: { legend: { display: false }, tooltip: { ...T.tip, filter: c => c.datasetIndex === 2, callbacks: { title: c => c[0].raw.q.id, label: c => dotLines(c.raw.q, [[M.fmt(c.raw.v), aN]]), footer: hint } } } } });
+    canvas.setAttribute("aria-label", `${M.title} by ${st.cat[1]}, ${rows.length} groups, ${dots.length} dots. Arrow keys move between dots, Enter opens the question.`);
+    alt.replaceChildren(textAlt(`${M.title} by ${st.cat[1]}.`, [cap(st.cat[1]), "Questions", "Median", "Mean"], rows.map(r => [groupName(r.key), r.s.n, M.fmt(r.s.median), M.fmt(r.s.mean)])));
   };
-  keyboard(canvas, () => chart, p => { live.textContent = `${p.q.id}. ${shorten(p.q.reps[0].question)}. ${name(st.score)} ${f2(p.s)}.`; }, open);
-  const pick = (label, opts, key) => { const s = h("select", { "aria-label": label }, opts.map(([v, t]) => h("option", { value: v, text: t }))); s.addEventListener("change", () => { st[key] = s.value; draw(); }); return s; };
-  const fig = h("figure", {}, h("h3", { text: "Scores by group" }), h("div", { class: "bar" }, pick("Score", scores.map(m => [m, name(m)]), "score"), pick("Group by", ["difficulty", "origin", "topic", "cause"].map(k => [k, "by " + GROUPERS[k][0].toLowerCase()]), "by")), wrap, note, live, alt);
-  return { el: fig, draw };
+  keyboard(canvas, () => chart, p => { live.textContent = `${p.q.id}. ${shorten(p.q.reps[0].question)}. ${M.title} ${M.fmt(p.v)}.`; }, open);
+  return { kind, el: h("figure", {}, head, wrap, note, live, alt), draw };
+}
+
+// Do slow answers score better? One dot per question, coloured by its group: the three biggest groups get a colour, the rest grey.
+function speedFigure(st, qs, open) {
+  const head = h("h3"), canvas = h("canvas", { tabindex: "0", role: "img" }), wrap = h("div", { class: "plot short" }, canvas), legend = h("div", { class: "legend" }),
+    note = h("p", { class: "caption", text: "One dot per question. Scores are nudged a little apart so they do not hide each other; the tooltip is exact. A question in two groups takes the colour of the first." }),
+    live = h("p", { class: "sr", "aria-live": "polite" }), alt = h("div"), gate = tapGate(open);
+  let chart = null;
+  const draw = () => {
+    const T = theme(), sN = name(st.score), groupsOf = st.cat[2], both = qs.filter(q => q.means[st.score] != null && q.per.seconds != null);
+    const coloured = groupRows(both, groupsOf, () => 1).map(r => r.key).filter(k => !NEUTRAL[k]).slice(0, 3);
+    const entries = [...coloured.map((k, i) => ({ key: k, label: k, c: i, shape: i })), { key: "", label: coloured.length ? "other" : "all", c: 3, shape: 3 }];
+    const of = q => entries.find(e => groupsOf(q).includes(e.key)) || entries[entries.length - 1];
+    const sets = entries.map(e => ({ label: e.label, e, dots: true, data: both.filter(q => of(q) === e).map(q => ({ x: q.per.seconds, y: nudge(q.means[st.score], q.id, "y"), o: q.per.seconds, q, s: q.means[st.score] })),
+      pointStyle: POINT[e.shape], backgroundColor: T.cols[e.c], borderColor: T.paper, borderWidth: 1.5, pointRadius: 5, pointHoverRadius: 8, pointHitRadius: 10 })).filter(s => s.data.length);
+    head.textContent = `${sN} against seconds per answer`;
+    chart && chart.destroy();
+    chart = new Chart(canvas, { type: "scatter", data: { datasets: sets }, options: { animation: false, responsive: true, maintainAspectRatio: false, interaction: { mode: "nearest", intersect: true },
+      scales: { x: valueAxis(T, "Seconds per answer", false, secs), y: valueAxis(T, sN, true) }, onClick: (_, els) => { if (els.length) gate(sets[els[0].datasetIndex].data[els[0].index].q.id); },
+      plugins: { legend: { display: false }, tooltip: { ...T.tip, callbacks: { title: c => c[0].raw.q.id, label: c => dotLines(c.raw.q, [[c.raw.s, sN], [secs(c.raw.x), "seconds"]]), footer: hint } } } } });
+    canvas.setAttribute("aria-label", `${sN} against seconds per answer, ${both.length} questions. Arrow keys move between dots, Enter opens the question.`);
+    legend.replaceChildren(...sets.map(s => h("span", { class: "key" }, swatch(s.e), `${s.label} (${s.data.length})`)));
+    alt.replaceChildren(textAlt(`${sN} against seconds per answer.`, ["Question", "Seconds", sN], both.map(q => [q.id, secs(q.per.seconds), f2(q.means[st.score])])));
+  };
+  keyboard(canvas, () => chart, p => { live.textContent = `${p.q.id}. ${shorten(p.q.reps[0].question)}. ${name(st.score)} ${f2(p.s)}, ${secs(p.x)}.`; }, open);
+  return { kind: "speed", el: h("figure", {}, head, wrap, legend, note, live, alt), draw };
+}
+
+// The distribution charts and their one shared picker. Null when none has anything to show.
+function distSection(qs, open) {
+  const scores = boxScores(qs), cats = categories(qs), st = { score: scores[0], cat: cats[0] };
+  if (!distCharts(qs, st.score).length) return null;
+  const figs = [...Object.keys(MEASURES).map(k => distFigure(k, st, qs, open)), speedFigure(st, qs, open)];
+  const draw = () => { const show = distCharts(qs, st.score); for (const f of figs) { f.el.hidden = !show.includes(f.kind); if (!f.el.hidden) f.draw(); } };
+  const pick = (label, opts, set) => { const s = h("select", { "aria-label": label }, opts.map(([v, t]) => h("option", { value: v, text: t }))); s.addEventListener("change", () => { set(s.value); draw(); }); return s; };
+  const bar = h("div", { class: "bar" }, pick("Group by", cats.map(c => [c[0], "Group by " + c[1]]), v => { st.cat = cats.find(c => c[0] === v); }),
+    scores.length > 1 ? pick("Score", scores.map(m => [m, name(m)]), v => { st.score = v; }) : null);
+  return { el: h("div", { class: "charts" }, bar, figs.map(f => f.el)), draw };
 }
 
 // The section for a suite page: the latest run's questions, both charts, and one redraw when light/dark changes.
@@ -423,7 +491,7 @@ function chartsSection(qs, open) {
   // shortcut: datasets have no "origin" field, so it is read from the tags: the commonest tag after the first (the first is the topic); a lone tag is its own origin. Add a real field if datasets start to use one.
   for (const q of qs) q.origin = q.tags.length > 1 ? q.tags.slice(1).sort((a, b) => tagN.get(b) - tagN.get(a) || a.localeCompare(b))[0] : q.tags[0] || "untagged";
   // a chart with nothing in it is left out: the scatter needs both scores on some question, the box plots any score
-  const figs = [qs.some(q => q.means.faithfulness != null && q.means.correctness != null) ? scatterFigure(qs, open) : null, boxScores(qs).length ? boxFigure(qs, open) : null].filter(Boolean);
+  const figs = [qs.some(q => q.means.faithfulness != null && q.means.correctness != null) ? scatterFigure(qs, open) : null, distSection(qs, open)].filter(Boolean);
   if (!figs.length) return null;
   const all = () => figs.forEach(f => f.draw());
   requestAnimationFrame(all);   // after the figures are in the page, so the canvases have a width
@@ -748,11 +816,36 @@ function questions(rows, cause, worse = new Set(), mode, P = 0.75) {
     const means = {};
     for (const m of SCORES) { const v = reps.map(r => r.scores[m]).filter(x => x != null); means[m] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
     const un = reps[0].answerable === false;
-    return { id, n: i + 1, reps, tags: reps[0].tags, difficulty: reps[0].difficulty, means, cause: cause.get(id) || "", worse: worse.has(id),
+    const avg = k => { const v = reps.map(r => r[k]).filter(x => typeof x === "number"); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    return { id, n: i + 1, reps, tags: reps[0].tags, difficulty: reps[0].difficulty, topic: reps[0].topic || "", means, cause: cause.get(id) || "", worse: worse.has(id),
+      per: { seconds: avg("total_s"), tokens: avg("tokens_out"), cost: avg("cost") },
       out: outcome(un ? means.abstention : means.correctness, un, reps.filter(r => r.error).length, reps.length, mode, P) };
   });
 }
 const OUT_RANK = { bad: 0, part: 1, na: 2, good: 3 };
+const FEW = 10;   // questions a phone shows before "Show all"
+// Every outcome word outcome() can give, in the order the bars stack them, with its colour class (Okabe and Ito's colour-blind-safe set, in report.css).
+// Not judged is pale grey, never a bad colour: nothing was measured.
+const OUTCOMES = [["right", "o-right"], ["right, with an error", "o-part"], ["partly right", "o-part"], ["wrong", "o-wrong"], ["system error", "o-err"],
+  ["declined", "o-dec"], ["declined, with an error", "o-decpart"], ["made something up", "o-made"], ["not judged", "o-na"]];
+// At a glance: one stacked bar per group (easy, medium, hard, or one "all"), a segment per outcome. Tapping a segment filters the list.
+function glance(groups, pick) {
+  groups.sort((a, b) => groupRank(a[0]) - groupRank(b[0]));
+  const total = {};
+  const bars = groups.map(([g, c]) => {
+    const n = Object.values(c).reduce((a, b) => a + b, 0);
+    for (const [w, k] of Object.entries(c)) total[w] = (total[w] || 0) + k;
+    return h("div", { class: "grow" }, h("span", { class: "glabel", text: `${groupName(g)} · ${n}` }), h("div", { class: "gbar" }, OUTCOMES.filter(([w]) => c[w]).map(([w, cls]) => {
+      const b = h("button", { type: "button", class: "seg " + cls, text: c[w], title: `${groupName(g)}: ${c[w]} ${w}`, "aria-label": `${groupName(g)}: ${c[w]} ${w}. Show them in the list` });
+      b.style.flexGrow = c[w];
+      b.addEventListener("click", () => pick(g, w));
+      return b;
+    })));
+  });
+  return [h("h2", { text: "At a glance" }), h("div", { class: "glance" }, bars),
+    h("div", { class: "legend" }, OUTCOMES.filter(([w]) => total[w]).map(([w, cls]) => h("span", { class: "key" }, h("span", { class: "sw " + cls, "aria-hidden": "true" }), `${w} ${total[w]}`))),
+    caption(`${groups.length > 1 ? "A bar per difficulty; each" : "Each"} block is an outcome, as wide as its number of questions. Tap a block to list those questions.`)];
+}
 
 function run() {
   const S = D.summary, P = S.pass_at, cause = new Map(S.causes.questions.map(q => [q.id, q.cause])), worse = new Set(D.worse);
@@ -769,20 +862,25 @@ function run() {
       D.compare_href ? [h("a", { href: D.compare_href, text: "What changed since the run before" }), ". "] : null),
     headline(S, D.compare));
 
-  const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1 };
+  const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1, out: "", group: "", all: false };   // out, group: a tapped at-a-glance segment; all: the phone list opened past FEW
   const select = (label, key, options) => { const s = h("select", { "aria-label": label }, options.map(([v, t]) => h("option", { value: v, text: t }))); s.addEventListener("change", () => { state[key] = s.value; state.page = 1; render(); }); return s; };
   const search = h("input", { type: "search", placeholder: "Search id, question, answer", "aria-label": "Search" });
   search.addEventListener("input", () => { state.text = search.value.toLowerCase(); state.page = 1; render(); });
   const causes = [...new Set(qs.map(q => q.cause).filter(Boolean))], tags = [...new Set(qs.flatMap(q => q.tags))].sort();
   const count = h("span", { class: "small" }), tbody = h("tbody"), head = h("tr"), pagers = [h("div", { class: "pager" }), h("div", { class: "pager" })];
   const VIEWS = { all: () => true, bad: q => q.out.cls !== "good", good: q => q.out.cls === "good", failed: q => q.cause, worse: q => q.worse };
-  const matches = q => VIEWS[state.view](q) && (!state.cause || q.cause === state.cause) && (!state.tag || q.tags.includes(state.tag)) &&
+  const matches = q => VIEWS[state.view](q) && (!state.out || q.out.word === state.out) && (!state.group || glanceOf(q)[0] === state.group) && (!state.cause || q.cause === state.cause) && (!state.tag || q.tags.includes(state.tag)) &&
     (!state.text || [q.id, ...q.tags, ...q.reps.flatMap(r => [r.question, r.answer])].some(t => t.toLowerCase().includes(state.text)));
   // on a phone only the number, the question and its outcome show; the scores are a tap away on the question
   const heads = [["n", "#"], ["question", "Question"], ["out", "Outcome"], ...cols.map(m => [m, name(m)]), ["tags", "Topics"], ["difficulty", "Difficulty"], ["cause", "Cause"]];
   const LEFT = new Set(["question", "out", "tags", "cause", "difficulty"]), WIDE = new Set(["n", "question", "out"]), MID = new Set(["tags", "difficulty", "cause"]);   // MID: shown on a wide screen only
   const key = (q, k) => k === "n" ? q.n : k === "question" ? q.reps[0].question.toLowerCase() : k === "out" ? OUT_RANK[q.out.cls] * 10 + (q.out.word.length / 100) : k === "tags" ? q.tags.join(" ") : k === "difficulty" ? (DIFF[q.difficulty] ?? 3) : k === "cause" ? q.cause : q.means[k];
   const current = () => qs.filter(matches).sort((a, b) => { const x = key(a, state.sort), y = key(b, state.sort); return x == null ? 1 : y == null ? -1 : (x < y ? -1 : x > y ? 1 : 0) * state.dir || a.n - b.n; });
+  const glanceOf = qs.some(q => q.difficulty) ? q => [q.difficulty || "unknown"] : () => ["all"];
+  const filtered = h("p", { class: "small", hidden: true }), moreBtn = h("button", { type: "button", class: "link" });
+  moreBtn.addEventListener("click", () => { state.all = true; render(); });
+  const pickSegment = (group, word) => { Object.assign(state, { out: word, group: group === "all" ? "" : group, page: 1, all: true }); render(); document.getElementById("questions").scrollIntoView(); };
+  put(glance(outcomeCounts(qs, glanceOf), pickSegment));
   const tally = new Map();
   for (const q of qs) tally.set(q.out.word, (tally.get(q.out.word) || 0) + 1);
   const order = [...tally].sort((a, b) => OUT_RANK[qs.find(q => q.out.word === b[0]).out.cls] - OUT_RANK[qs.find(q => q.out.word === a[0]).out.cls]);
@@ -791,7 +889,7 @@ function run() {
     caption(`Mean over repeats; right means ${name("correctness")} ${P} or more. Tap a question to read it, its answer and how it was marked.`),
     h("div", { class: "bar" }, select("Show", "view", [["all", "All questions"], ["bad", "Not right"], ["good", "Right"], ["failed", "Failed, with a cause"], ["worse", "Got worse"]]),
       causes.length ? select("Cause", "cause", [["", "Any cause"], ...causes.map(c => [c, c])]) : null, tags.length ? select("Topic", "tag", [["", "Any topic"], ...tags.map(t => [t, t])]) : null, search, count),
-    pagers[0], h("div", { class: "scroll" }, h("table", { class: "q" }, h("thead", {}, head), tbody)), pagers[1]);
+    filtered, pagers[0], h("div", { class: "scroll" }, h("table", { class: "q" }, h("thead", {}, head), tbody)), moreBtn, pagers[1]);
   heads.forEach(([k, t]) => {
     const b = h("button", { type: "button", class: "sort", text: t });
     b.addEventListener("click", () => { state.dir = state.sort === k ? -state.dir : 1; state.sort = k; state.page = 1; render(); });
@@ -802,12 +900,21 @@ function run() {
     const shown = current(), pr = pageRange(shown.length, state.page, PER_PAGE);
     state.page = pr.page;
     count.textContent = `Showing ${shown.length} of ${qs.length}`;
+    // on a phone a long list stops at FEW rows with "Show all", so the charts and scores below are not thousands of pixels away
+    const cut = phone.matches && !state.all && pr.to - pr.from > FEW ? pr.from + FEW : pr.to;
+    moreBtn.hidden = cut === pr.to; moreBtn.textContent = `Show all ${pr.to - pr.from} questions`;
+    filtered.hidden = !state.out;
+    if (state.out) {
+      const clear = h("button", { type: "button", class: "link", text: "Show every outcome" });
+      clear.addEventListener("click", () => { Object.assign(state, { out: "", group: "", page: 1 }); render(); });
+      filtered.replaceChildren(`Only ${state.out}${state.group ? ", " + state.group : ""}. `, clear);
+    }
     for (const p of pagers) {
       const go = (to, text, off) => { const b = h("button", { type: "button", text, disabled: off }); b.addEventListener("click", () => { state.page = to; render(); }); return b; };
       p.replaceChildren(...(pr.pages > 1 ? [go(pr.page - 1, "← Previous", pr.page === 1), h("span", { class: "small", text: ` Page ${pr.page} of ${pr.pages}: questions ${pr.from + 1} to ${pr.to} ` }), go(pr.page + 1, "Next →", pr.page === pr.pages)] : []));
     }
     tbody.replaceChildren();
-    for (const q of shown.slice(pr.from, pr.to)) {
+    for (const q of shown.slice(pr.from, cut)) {
       const tr = h("tr", { class: "item", "data-id": q.id }, h("td", { text: q.n }),
         h("td", { class: "left" }, h("a", { class: "qlink", href: "#q-" + encodeURIComponent(q.id), text: shorten(q.reps[0].question, 110) }), h("span", { class: "qid", text: q.id }), q.worse ? h("span", { class: "down flag", text: "worse" }) : null),
         h("td", { class: "left" }, mark(q.out)),
@@ -851,7 +958,7 @@ function run() {
     } else {
       const back = !detail.hidden, was = state.page;
       detail.hidden = true; list.hidden = false;
-      if (back && lastId) { const at = current().findIndex(x => x.id === lastId); if (at >= 0) state.page = Math.floor(at / PER_PAGE) + 1; }
+      if (back && lastId) { const at = current().findIndex(x => x.id === lastId); if (at >= 0) { state.page = Math.floor(at / PER_PAGE) + 1; if (at % PER_PAGE >= FEW) state.all = true; } }
       render();
       if (back) { const tr = [...tbody.children].find(r => r.dataset.id === lastId); state.page === was ? scrollTo(0, scrollAt) : tr && tr.scrollIntoView({ block: "center" }); }
     }

@@ -8,7 +8,7 @@ Tags and difficulty labels let you see where a system is weak, for example "it d
 2. Add `"difficulty": "easy"`, `"medium"` or `"hard"`, because anything else is reported as an error. An older file may put one of these words in `tags` instead, and Nasute reads that too.
 3. Save the change as a new dataset version rather than editing the old one, as described in [write and version a dataset](write-a-dataset.md).
 
-Each run then holds the mean of every score per tag and per difficulty, and the run page shows them in the topic breakdown under Details. Tags group the scores in the report: the topic is the first tag, and the run page's question list can be filtered by it and its box plots grouped by it.
+Each run then holds the mean of every score per tag and per difficulty, and the run page shows them in the topic breakdown under Details. Tags group the scores in the report: the topic is the first tag, and the run page's question list can be filtered by it and its distribution charts grouped by it, or by each tag.
 
 ## Check your difficulty labels
 

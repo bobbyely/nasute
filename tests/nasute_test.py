@@ -1409,6 +1409,23 @@ eq([outcome(1, 0, 0, 1), outcome(0.5, 0, 0, 1, "knowledge"), outcome(0.5, 0, 0, 
   ["right", "right, with an error", "partly right", "wrong", "system error", "partly right", "not judged"], "outcomes");
 eq([outcome(1, 1, 0, 1), outcome(0.5, 1, 0, 1), outcome(0, 1, 0, 1)].map(o => [o.word, o.cls]), [["declined", "good"], ["declined, with an error", "part"], ["made something up", "bad"]], "declined or not");
 eq(outcome(0.8, 0, 0, 1, "quick", 0.9).word, "partly right", "pass_at is the line for right");
+// at a glance: outcome counts per group come from the same outcome the list shows, made-up questions and system errors included
+const og = (id, difficulty, rows) => rows.map(r => ({ id, repeat: 1, tags: [], difficulty, answer: "", question: "", ...r }));
+const gq = questions([...og("a", "easy", [{ scores: { correctness: 1 } }]), ...og("b", "easy", [{ scores: { correctness: 0 } }]), ...og("c", "hard", [{ scores: { abstention: 0 }, answerable: false }]),
+  ...og("d", "hard", [{ scores: { correctness: 0 }, error: "Timeout" }]), ...og("e", "hard", [{ scores: { abstention: 1 }, answerable: false }]), ...og("f", "hard", [{ scores: { correctness: 0.5 } }])], new Map(), new Set(), "knowledge");
+eq(outcomeCounts(gq, q => [q.difficulty]), [["easy", { right: 1, wrong: 1 }], ["hard", { "made something up": 1, "system error": 1, declined: 1, "right, with an error": 1 }]], "outcomes per group");
+eq(outcomeCounts(gq, () => ["all"])[0][1]["system error"], 1, "one bar when difficulty is unknown");
+eq(outcomeCounts([{ out: { word: "right" } }], () => ["x", "y"]).map(g => g[0]), ["x", "y"], "a question in two groups counts in both");
+// strip or box: a group of scores with three values or fewer is a strip; otherwise a box from four, else dots; seconds are never a strip
+eq([distKind([0, 0.5, 1, 1, 1], true), distKind([1], true), distKind([0, 0.25, 0.5, 1], true), distKind([0, 0.25, 0.5, 0.75, 1], true), distKind([0.2, 0.4, 0.6], false), distKind([1, 1, 1, 1], false), distKind([1, 2], false)],
+  ["strip", "strip", "box", "box", "dots", "box", "dots"], "strip or box");
+// hide rules: the score chart needs two questions, the others a value, the scatter a question with both a score and seconds
+eq(distCharts(gq, "correctness"), ["score"], "no timing: score only");
+const tq = questions(og("a", "easy", [{ scores: { correctness: 1 }, total_s: 2, cost: null }, { scores: { correctness: 0 }, total_s: 4 }]), new Map());
+eq([tq[0].per.seconds, tq[0].per.cost, tq[0].per.tokens], [3, null, null], "per-question means of what was measured");
+eq(distCharts(tq, "correctness"), ["seconds", "speed"], "one question: no score chart; no cost or tokens: none of those");
+eq(distCharts(tq, "abstention"), ["seconds"], "the scatter needs the score too");
+eq(distCharts([], undefined), [], "nothing to draw");
 eq([enough([], "c"), enough([{ metrics: { c: { mean: 1 } } }], "c"), enough([{ metrics: { c: { mean: 1 } } }, { metrics: { c: { mean: null } } }], "c"), enough([{ metrics: { c: { mean: 1 } } }, { metrics: { c: { mean: 0 } } }], "c")],
   [false, false, false, true], "over time needs two runs that measured the score");
 // comparing: runs on two datasets are never like for like; two versions of one dataset are, by name, but not by file
