@@ -1,0 +1,11 @@
+# Dependabot: keeps the GitHub Actions in .github/workflows up to date (monthly, one grouped pull request).
+# Nasute itself has no Python dependencies, and the vendored chart scripts in src/nasute/assets are updated by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
