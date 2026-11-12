@@ -28,6 +28,26 @@ On the dashboard you can also tick runs on different datasets. They asked differ
 
 Nasute prints "not comparable" and gives no verdicts when the dataset file differs, when a run stopped early, or when both runs name different profiles. For judged scores the judge model must also be the same, because scores from different judges are not comparable, so use the same judge and the same profile for both runs. With fewer than 5 shared questions there is no verdict either, and each score shows "too few questions".
 
+## Run several targets in one command
+
+Instead of one `run` per target, name them all. On the command line, give `--target` more than once:
+
+```bash
+nasute run --dataset my-questions --target model-a --target model-b
+```
+
+Or keep the list in the settings, usually in a profile, and run that profile:
+
+```toml
+[profiles.shootout]
+run_targets = ["model-a", "model-b"]
+max_cost = 1.0           # US$ per target's run, where the API reports cost
+```
+
+Nasute runs each target in turn on the same questions, each as its own run, exactly as above. A target that fails (a bad name, a crash) is reported, and the others still run. At the end it prints one summary that ranks the targets by the main score, with its 95% range, the cost and the seconds per answer. With exactly two finished runs it also prints the paired compare. The spending cap, `max_cost`, applies to each target's run on its own, so an expensive first target never cuts the second one short.
+
+## Before and after a change
+
 To compare the same system before and after a change, run it twice and use `nasute compare` with no ids, which compares the newest run with the baseline. See [baselines and labels](baselines-and-labels.md).
 
 ---

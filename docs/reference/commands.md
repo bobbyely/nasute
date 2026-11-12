@@ -24,25 +24,38 @@ nasute init [FOLDER] [--demo]
 
 It writes `nasute.toml` and `datasets/example/v1.jsonl` into FOLDER, which defaults to the current folder. With `--demo` the settings point at `nasute demo-server` (the system, its sources and the judge), so you can try a run without editing anything. It never overwrites anything: if either file already exists it writes nothing, lists the files in the way, and returns 1.
 
+## prompts export
+
+`prompts export` writes the six built-in judge prompts as text files, so that you can start a custom prompt from the real text.
+
+```text
+nasute prompts export FOLDER
+```
+
+It writes `quick.txt`, `split.txt`, `check.txt`, `knowledge.txt`, `knowledge_abstain.txt` and `abstain.txt` into FOLDER, creating it if needed. It needs no settings. It never overwrites anything: if any of the files already exists it writes nothing, lists the files in the way, and returns 1. Name the files you change in [`[judge.prompts]`](settings.md#judgeprompts). See [change the judge prompts](../how-to/change-the-judge-prompts.md).
+
 ## run
 
 `run` is the command that does the actual testing, and it asks every question of a dataset, judges the answers, scores them, saves the run and rewrites the report.
 
 ```text
-nasute run [--profile NAME] [--dataset NAME] [--target NAME] [--version V]
+nasute run [--profile NAME] [--dataset NAME] [--target NAME]... [--version V]
            [--limit N] [--repeats N] [--mode quick|claims] [--label TEXT]
+           [--max-cost USD] [--concurrency N]
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--profile NAME` | Merge the settings table `[profiles.NAME]` over the base settings. An unknown name stops the run. |
 | `--dataset NAME` | The dataset to ask. Without it, Nasute uses the `dataset` setting, and if that is empty, the one dataset whose header names the chosen target. If there is not exactly one, Nasute stops and says so. |
-| `--target NAME` | Ask the dataset's questions of this target instead of the one its header names, which makes a separate suite (`dataset@target`). Without it, the target is the one in the dataset's header. |
+| `--target NAME` | Ask the dataset's questions of this target instead of the one its header names, which makes a separate suite (`dataset@target`). Without it, the target is the one in the dataset's header. Give it more than once (`--target model-a --target model-b`) to run each target in turn and rank them, as `run_targets` does; it overrides that setting. Then the exit code is 1 if any target failed. |
 | `--version V` | A dataset version such as `2`, `2.1` or `2.1.0`. The default is the newest. |
 | `--label TEXT` | Names the run as it starts, for example `--label "prompt change"`. It is the same label `runs label` sets, and the dataset page marks labelled runs on the charts over time, so you can see where a change happened. |
 | `--limit N` | Ask only the first N questions, where `0` means all. This overrides the profile and the `limit` setting. |
 | `--repeats N` | The number of times each question is asked. This overrides the profile, and `0` is ignored. |
 | `--mode quick\|claims` | The judge mode. This overrides `[judge] mode` and the profile. |
+| `--max-cost USD` | The spending cap for each run, overriding `max_cost` (`0` means no cap). |
+| `--concurrency N` | Questions asked at once, overriding `concurrency` and any target's own. |
 
 When your settings file has one target and one dataset, the first run needs no options at all.
 
@@ -54,7 +67,7 @@ When your settings file has one target and one dataset, the first run needs no o
 nasute judge-check [--mode quick|claims] [--limit N]
 ```
 
-It reports how often the judge's marks fall where they should. The set is the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`, and the results are saved under `runs/judge-<UTC time>/`. With `--limit N` only the first N items are checked. See [check the judge](../how-to/judge-check.md).
+It reports how often the judge's marks fall where they should. The set is the `judge_set` setting, or, if that is empty, the one dataset whose header says `"target": "judge"`, and the results are saved under `runs/judge-<UTC time>/`. With `--limit N` only the first N items are checked. The check records which judge prompts it used, and a run's judge reliability only counts a check made with the same prompts. See [check the judge](../how-to/judge-check.md).
 
 ## compare
 
@@ -66,7 +79,7 @@ nasute compare [RUN_A RUN_B] [--suite SUITE]
 
 With two run ids, it compares them, treating A as the older run. With none, it compares the newest run (of SUITE, if you give one) against its reference run, which is the suite's baseline if the profiles fit and otherwise the previous compatible run. You must give exactly two ids or none, because a single id is ignored, and a run id can be shortened to its start only in `runs ...` commands, not here.
 
-Two runs can be compared when they used the same dataset file, whatever their targets. Runs that name different profiles, or that used different dataset files, print "not comparable" and no verdicts. See [compare two models](../how-to/compare-runs.md).
+Two runs can be compared when they used the same dataset file, whatever their targets. Runs that name different profiles, or that used different dataset files, print "not comparable" and no verdicts. Runs marked by a different judge model or with different judge prompts get a note, such as `Different judge prompts (quick): custom quick against custom none. Marked scores are not comparable.`, and their marked scores (faithfulness, correctness, relevancy, context recall, abstention) show "not comparable"; retrieval scores and error rate are still compared. See [compare two models](../how-to/compare-runs.md).
 
 ## report
 
@@ -119,10 +132,10 @@ nasute runs delete RUN [--yes]
 | --- | --- |
 | `runs` | Lists runs grouped by suite, showing the date, profile, judge mode, counts, correctness with its interval, marks (`BASELINE`, `STOPPED EARLY`, `INCOMPLETE`) and label. `--suite` goes before any action word. |
 | `runs show RUN` | Shows one run's scores with their meanings, why answers failed, and the worst questions. |
-| `runs label RUN TEXT` | Sets a label, and empty text (`""`) removes it. |
-| `runs baseline RUN` | Makes RUN the baseline of its suite. A run that was stopped early cannot be a baseline. |
+| `runs label RUN TEXT` | Sets a label, and empty text (`""`) removes it. Rewrites the report. |
+| `runs baseline RUN` | Makes RUN the baseline of its suite, and rewrites the report. A run that was stopped early cannot be a baseline. |
 | `runs export RUN` | Writes the run as CSV, one row for each attempt, to the screen or to `--csv FILE`. With `--suite SUITE` instead of a run it writes one row for each question in each run of the suite. The columns are in [file formats](file-formats.md#exports). |
-| `runs delete RUN [--yes]` | Deletes a run folder after asking, and the baseline of a suite needs `--yes`. |
+| `runs delete RUN [--yes]` | Deletes a run folder after asking, and the baseline of a suite needs `--yes`. Rewrites the report, so the run's page and its copies are gone from it too. |
 
 RUN is a run id (such as `20261029T090937Z`) or the start of one, as long as only one run starts that way.
 

@@ -31,7 +31,7 @@ const plain = m => cap(G[m].plain) + ".";
 const plainLine = m => h("span", { class: "plain-line", text: G[m].plain });
 const f2 = x => x == null ? "–" : x.toFixed(2);
 const sgn = x => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(2);
-const iso = id => id.replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/, "$1-$2-$3T$4:$5:$6Z");
+const iso = id => id.replace(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z(-\d+)?$/, "$1-$2-$3T$4:$5:$6Z");   // "-2": a second run in the same second
 const when = id => new Date(iso(id)).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).replace(",", "").replace(/ /g, "\u00a0");   // "28 Oct 20:30", never split over lines
 const day = id => new Date(iso(id)).toLocaleString("en-AU", { day: "numeric", month: "short" });
 // "± 0.12" when the interval is symmetric around the mean, else the interval itself, shown within 0 to 1
@@ -579,7 +579,7 @@ function overview() {
   draw();
   for (const j of D.judges) {
     const jc = j.check, ms = jc ? SCORES.filter(m => jc.metrics[m]) : [];
-    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. "));
+    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode${j.custom && j.custom.length ? `, custom judge prompts: ${j.custom.join(", ")}` : ""}. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. "));
   }
   finish();
 }
@@ -618,7 +618,7 @@ function dataset() {
   const bar = compareBar(picked, go, () => { picked.clear(); panel.replaceChildren(); draw(); bar.paint(); });
   add(h("h2", { id: "runs", text: "Runs" }), h("p", { class: "intro", text: "Newest first. Tap a date to open the run; tick two or more to compare them question by question." }), host, bar.el, panel);
   draw();
-  const m = location.hash.match(/^#compare=([\w,]+)$/);
+  const m = location.hash.match(/^#compare=([\w,-]+)$/);
   if (m) { m[1].split(",").forEach(id => runs.some(r => r.run === id) && picked.add(id)); draw(); bar.paint(); if (picked.size > 1) requestAnimationFrame(go); }
 
   overTime(runs);
@@ -858,8 +858,9 @@ function run() {
   const home = [D.dataset_href, D.suite.dataset];
   put(crumbs(home, [null, when(S.run)]), h("h1", { text: D.suite.target_label || D.suite.target }),
     h("p", { class: "dateline" }, `Run of ${when(S.run)} on ${S.dataset.name} v${ver(S.dataset.version)}. ${runLabel(S)}${D.label ? `, “${D.label}”` : ""}${D.baseline ? ", the baseline" : ""}. ${S.counts_line}. `,
-      S.aborted ? note(`Stopped early: ${S.aborted}. ${plain("aborted")}`) : null, S.incomplete ? note(`Incomplete: too many judge errors. ${plain("incomplete")}`) : null,
+      S.incomplete ? note(`Incomplete: too many judge errors. ${plain("incomplete")}`) : null,
       D.compare_href ? [h("a", { href: D.compare_href, text: "What changed since the run before" }), ". "] : null),
+    S.aborted ? h("p", { class: "note warn", text: `Stopped early: ${S.aborted}. The scores cover only the questions asked before that.` }) : null,   // in plain sight, not a footnote: the scores are partial
     headline(S, D.compare));
 
   const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1, out: "", group: "", all: false };   // out, group: a tapped at-a-glance segment; all: the phone list opened past FEW
@@ -930,7 +931,7 @@ function run() {
   put(h("h2", { class: "quiet", text: "Details" }),
     more("By topic and difficulty", groupTable(S.tags, "Topic"), h("div", { class: "gap" }), groupTable(S.difficulty || {}, "Difficulty")),
     h("p", { class: "small" }, "Download: ", h("a", { href: `${S.run}.csv`, download: "", text: "CSV" }), " · ", h("a", { href: `${S.run}.results.jsonl`, download: "", text: "JSON lines" }), " · ", h("a", { href: `${S.run}.summary.json`, download: "", text: "summary" }), "."),
-    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Judge: ${S.judge_model} (${S.judge_mode}). Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }),
+    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Judge: ${S.judge_model} (${S.judge_mode}${S.judge_prompts && S.judge_prompts.custom.length ? `, custom judge prompts: ${S.judge_prompts.custom.join(", ")}` : ""}). Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }),
     D.judge_check ? null : h("p", { class: "small", text: "No judge check yet for this judge and mode. Run: nasute judge-check" }));
 
   // The question view: one question across the whole page, with Previous and Next in the order the table is showing.

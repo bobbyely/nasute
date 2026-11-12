@@ -9,7 +9,7 @@ nasute.toml                    your settings
 datasets/<name>/v1.jsonl       questions. v2.jsonl is the next version, never an edit of v1
 runs/                          the `runs` setting
   index.json                   labels and baselines
-  <UTC time>/                  one run, e.g. 20261029T090937Z
+  <UTC time>/                  one run, e.g. 20261029T090937Z (a second run started in the same second gets -2)
     results.partial.jsonl      only while the run is going: each attempt, added as it finishes
     results.jsonl              every question and repeat, in dataset order
     summary.json               scores, intervals, settings, models, counts

@@ -1,8 +1,8 @@
-"""Looking after Nasute's files: `init`, `dataset check|import|list`, `runs ...` and `serve`.
+"""Looking after Nasute's files: `init`, `prompts export`, `dataset check|import|list`, `runs ...` and `serve`.
 
 How it runs: imported by nasute, which hands it the settings; each function is one command and returns the exit code
 (None or 0 is success). Reads: the settings, datasets, runs, starter/. Writes: only what the command is for: a starter
-folder, the next dataset version, runs/index.json, or (delete) a run folder.
+folder, the judge prompts as text files, the next dataset version, runs/index.json, or (delete) a run folder.
 """
 import csv
 import functools
@@ -56,6 +56,23 @@ def init(folder, demo=False):
         "  nasute report      (then open report/index.html)")
 
 
+def prompts_export(folder):
+    """Write the six built-in judge prompts as <name>.txt in `folder`, to edit and name in [judge.prompts]. Never overwrites:
+    if any file is there, nothing is written. A separate command, not an init flag, as a user with settings already wants only these."""
+    folder = Path(folder)
+    files = {folder / f"{name}.txt": text for name, text in N.PROMPTS.items()}
+    taken = [str(f) for f in files if f.exists()]
+    if taken:
+        say("Nothing written: these files already exist: " + ", ".join(taken))
+        return 1
+    folder.mkdir(parents=True, exist_ok=True)
+    for f, text in files.items():
+        f.write_text(text + "\n", encoding="utf-8")   # load_prompts() drops this newline, so an unedited file matches the built-in prompt
+        say(f"wrote {f}")
+    say("\nEdit the ones you want to change, then name only those in nasute.toml (paths start from the settings file's folder), for example:\n"
+        f"  [judge.prompts]\n  quick = \"{(folder / 'quick.txt').as_posix()}\"\nThen run nasute judge-check before trusting the scores.")
+
+
 # ---- datasets -----------------------------------------------------------------------------------
 
 def problems(path):
@@ -96,10 +113,19 @@ def question_problems(q, target):
         return ["not an object"]
     need = N.REQUIRED.get(target, N.REQUIRED_DEFAULT)
     out = [f"missing field(s): {', '.join(sorted(need - q.keys()))}"] * bool(need - q.keys())
-    if target in N.REQUIRED:   # a judge set has its own shape; the rest is checked when it is used
-        return out
     text = lambda k: [f"{k!r} must be text"] * (k in q and not isinstance(q[k], str))
     lists = lambda k: [f"{k!r} must be a list of text"] * (k in q and not (isinstance(q[k], list) and all(isinstance(x, str) for x in q[k])))
+    if target in N.REQUIRED:   # a judge set: answers with known faults, and the band each score should fall in
+        band = lambda v: isinstance(v, list) and len(v) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x <= 1 for x in v) and v[0] <= v[1]
+        e = q.get("expect")
+        out += text("id") + text("kind") + text("question") + text("reference") + text("answer") + lists("extracts")
+        out += ["'answerable' must be true or false"] * ("answerable" in q and not isinstance(q["answerable"], bool))
+        if "expect" in q and not (isinstance(e, dict) and e):
+            out.append("'expect' must be a table of scores, such as {\"correctness\": [0.75, 1]}")
+        elif isinstance(e, dict):
+            out += [f"'expect' has no score called {m!r}" for m in e if m not in N.GENERATION + ["abstention"]]
+            out += [f"'expect' {m}: must be [low, high], two numbers from 0 to 1, low first" for m, v in e.items() if not band(v)]
+        return out
     out += text("id") + text("question") + text("reference") + lists("sources") + lists("tags")
     out += [f"'id' must not be empty"] * (q.get("id") == "") + [f"'question' must not be empty"] * (q.get("question") == "")
     if "difficulty" in q and q["difficulty"] not in DIFFICULTIES:
@@ -275,7 +301,8 @@ def runs_show(cfg, text):
     meta = N.run_meta(cfg)
     say(f"{run_id}  ({when(run_id)} UTC)  suite {s['dataset']['name']} × {s.get('target', '?')}"
         + (f"  \"{meta['labels'][run_id]}\"" if run_id in meta["labels"] else "") + ("  [BASELINE]" if meta["baselines"].get(N.suite_of(s)) == run_id else ""))
-    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
+    custom = (s.get("judge_prompts") or {}).get("custom")
+    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}{', custom judge prompts: ' + ', '.join(custom) if custom else ''}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
     say(s["counts_line"] + (f"\nSTOPPED EARLY: {s['aborted']}" if s.get("aborted") else "") + ("\nINCOMPLETE: too many judge errors" if s.get("incomplete") else ""))
     say("\n".join(N.describe(s)))
     if any(s["causes"]["counts"].values()):
@@ -314,6 +341,7 @@ def runs_export(cfg, text, suite, file):
 def runs_label(cfg, text, label):
     run_id, _ = resolve(cfg, text)
     N.set_label(cfg, run_id, label)
+    N.report(cfg)   # the charts and run tables show labels
     say(f"{run_id}: " + (f"labelled \"{label}\"" if label else "label removed"))
 
 
@@ -324,6 +352,7 @@ def runs_baseline(cfg, text):
     meta = N.run_meta(cfg)
     meta["baselines"][N.suite_of(sums[run_id])] = run_id
     N.save_meta(cfg, meta)
+    N.report(cfg)   # the report measures against the baseline
     say(f"{run_id} is now the baseline of {N.suite_of(sums[run_id])}. Compare and the report measure against it.")
 
 
@@ -341,6 +370,7 @@ def runs_delete(cfg, text, yes=False):
     if meta["baselines"].get(suite) == run_id:
         del meta["baselines"][suite]
     N.save_meta(cfg, meta)
+    N.report(cfg)   # else the report keeps the run's page and copies of its results, and serve goes on showing them
     say(f"deleted {run_id}")
 
 

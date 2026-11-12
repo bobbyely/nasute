@@ -6,9 +6,24 @@ A target is the system you want to test, and you add one when you want Nasute to
 
 A target is a `[targets.<name>]` table in `nasute.toml`, with a name that you choose, and the first line of a dataset says which target the dataset is for.
 
+## A chat model
+
+For a model behind an OpenAI-compatible chat API (a hosted service, Ollama, llama.cpp's server, vLLM), use the `chat` kind. It needs no JSON paths.
+
+```toml
+[targets.mine]
+kind = "chat"
+url = "https://api.example.com/v1"        # the base address, ending /v1
+model = "my-model"
+headers = { Authorization = "env:MY_API_KEY" }
+# system = "Answer in one sentence."      # optional system prompt
+```
+
+The question goes as the user message. Nasute reads the answer, and the tokens and cost when the reply gives them. A chat model names no sources, so use judge mode `knowledge` (or `quick`). Every setting is in [settings](../reference/settings.md#kind--chat).
+
 ## An HTTP endpoint
 
-You describe the endpoint in settings, and Nasute builds the requests from your description. The example below is for an OpenAI-compatible chat endpoint.
+For any other endpoint that answers in JSON, you describe it in settings, and Nasute builds the requests from your description. The example below is the same chat API written out by hand, to show the parts.
 
 ```toml
 [targets.mine]
@@ -39,7 +54,7 @@ If your system is not behind HTTP, you can write one function that Nasute calls 
        return {"answer": text, "sources": [], "extracts": [], "first_text_s": None, "total_s": 1.0, "error": None}
    ```
 
-2. Make sure the function never raises an exception, and put any problem in `error` instead. Add `"unreachable": True` if it could not connect at all, so that Nasute waits and retries, and add `"extracts_failed": True` if it could not get the text the judge needs, in which case Faithfulness is not measured and the failure is not held against the system.
+2. Make sure the function never raises an exception, and put any problem in `error` instead. Add `"unreachable": True` if it could not connect at all, so that Nasute waits and retries, and add `"extracts_failed": True` if it could not get the text the judge needs, in which case Faithfulness is not measured and the failure is not held against the system. Nasute keeps only these keys, plus `links`, `tokens_in`, `tokens_out` and `cost`; anything else in the dict is dropped, so a target cannot change the question, reference or expected sources it is judged against.
 3. Use the `temperature` and `seed` values in `settings` if your system can take them.
 4. Add a `[targets.<name>]` table with `kind = "my_target:ask"` (the module, a colon, the function), and a dataset whose header says `"target": "<name>"`. Nasute imports the module from the folder of `nasute.toml`, or from anywhere Python can already import it.
 

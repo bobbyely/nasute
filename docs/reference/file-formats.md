@@ -48,7 +48,7 @@ A judge set is a dataset used to test the judge instead of a system, and it has 
 | `answer` | The answer to judge. Written by hand, with a known fault or none. |
 | `expect` | `{ metric: [low, high] }`. The range each score should fall in. Leave a metric out to skip it. |
 
-All of `id`, `kind`, `question`, `reference`, `extracts`, `answer`, `expect` are required.
+All of `id`, `kind`, `question`, `reference`, `extracts`, `answer`, `expect` are required. `id`, `kind`, `question`, `reference` and `answer` are text and `extracts` a list of text. Each `expect` key is a score that the judge gives (faithfulness, correctness, relevancy, context_recall or abstention), and each band is two numbers from 0 to 1, low first. `dataset check` reports a field that breaks these rules, and `judge-check` stops before judging if any does.
 
 ## CSV for `dataset import`
 
@@ -93,6 +93,7 @@ This file holds the scores and everything needed to interpret them, such as the 
 | `dataset` | `{name, version, sha256}`. The version is text such as `"1.2.0"`. Runs from before versions had three parts store a whole number (`2`), which is read as `2.0.0`. |
 | `settings` | The settings used, with each `headers` table cut down to its names, anything (a value, list or table) under a name like key, token, secret, password, auth or credential hidden, and any URL's `user:password@` and query values hidden. Folder paths are saved as absolute paths. |
 | `profile`, `judge_mode`, `judge_cache`, `temperature`, `repeats`, `pass_at` | The run's main settings. |
+| `judge_prompts` | The judge prompts the run's mode used: `sha256` (the first 12 hex digits of each prompt's SHA-256, by name) and `custom` (the names that came from a file in `[judge.prompts]`). Runs from before 0.2.0 have none and used the built-in prompts. |
 | `metrics` | Per score: `mean`, `std`, `se`, `ci` (95% interval), `n` (questions), `attempts`. Strict: a system error counts as 0. |
 | `metrics_answered` | The same without the attempts where the system errored. No `error_rate`. |
 | `power` | Per score: `needed` (questions to see a `detect` change) and `basis` (`repeats` or `worst case`). |
@@ -102,14 +103,14 @@ This file holds the scores and everything needed to interpret them, such as the 
 | `consistency` | Null without repeats. Else `questions`, `pass_all`, `left_out`, `flaky`. |
 | `causes` | `counts` per cause and a `questions` list with each cause and reason. |
 | `failures` | Each system or judge error with its question id. |
-| `judge_reliability` | The newest complete judge-check for this judge model and mode (`run`, `items`, `set_size`, `aborted`, `metrics`). If there is no complete one, the newest stopped check, with `aborted` set to why it stopped. Null if there is none. |
+| `judge_reliability` | The newest complete judge-check for this judge model, mode and judge prompts (`run`, `items`, `set_size`, `aborted`, `metrics`). If there is no complete one, the newest stopped check, with `aborted` set to why it stopped. Null if there is none. |
 | `time_to_first_text_s` | Mean time to first text, if the target reports it. |
 
 ## `runs/judge-<time>/summary.json`
 
 A judge-check saves its own summary in a folder beside the runs, with the fields below.
 
-`run`, `dataset`, `judge_model`, `judge_mode`, `items` (judged), `set_size`, `aborted`, `failed` (judge errors), `total_s`, `metrics` (per score `accuracy`, `kappa`, `n`) and `wrong` (each out-of-range mark with `id`, `kind`, `metric`, `expected`, `got`). Its `results.jsonl` has one line per item: `id`, `kind`, `scores`, `reasons`, `judge_detail`, `judge_error`, `judge_s`.
+`run`, `dataset`, `judge_model`, `judge_mode`, `judge_prompts` (as in a run's summary), `items` (judged), `set_size`, `aborted`, `failed` (judge errors), `total_s`, `metrics` (per score `accuracy`, `kappa`, `n`) and `wrong` (each out-of-range mark with `id`, `kind`, `metric`, `expected`, `got`). Its `results.jsonl` has one line per item: `id`, `kind`, `scores`, `reasons`, `judge_detail`, `judge_error`, `judge_s`.
 
 ## `runs/index.json`
 

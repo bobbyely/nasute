@@ -1,6 +1,6 @@
 # Nasute
 
-> A self-hosted eval harness for RAG and LLM systems. It asks a system questions with known answers, has a judge model say yes or no about single claims in each answer, counts the yeses in code, and reports every score with a 95% range. It compares runs question by question and writes a static HTML report. Python 3.11+, standard library only.
+> Tests any AI system that answers questions: plain chat models, search-and-answer (RAG) systems, or anything behind an HTTP endpoint or a Python function. It asks a system questions with known answers, has a judge model say yes or no about single claims in each answer, counts the yeses in code, and reports every score with a 95% range. It compares runs question by question and writes a static HTML report. Python 3.11+, standard library only.
 
 The full settings file, with every setting explained, is `nasute.example.toml`. Score names and formulas come from `GLOSSARY` in `src/nasute/__init__.py`. Agents changing the code should read `AGENTS.md` first.
 
@@ -24,6 +24,7 @@ The full settings file, with every setting explained, is `nasute.example.toml`. 
 - [Run overnight](docs/how-to/run-overnight.md)
 - [Use a cloud judge](docs/how-to/use-a-cloud-judge.md)
 - [Check the judge](docs/how-to/judge-check.md)
+- [Change the judge prompts](docs/how-to/change-the-judge-prompts.md): your own wording, checked with judge-check
 
 ## Reference
 

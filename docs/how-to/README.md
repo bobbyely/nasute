@@ -16,6 +16,7 @@ These guides each cover one job, and they assume you have already worked through
 - [Run a deep test overnight on a shared machine](run-overnight.md): do it without overheating the processor.
 - [Use a cloud judge](use-a-cloud-judge.md): let a hosted model mark the answers.
 - [Check the judge, and add judge items](judge-check.md)
+- [Change the judge prompts](change-the-judge-prompts.md): mark with your own wording, and check it first.
 
 ---
 
