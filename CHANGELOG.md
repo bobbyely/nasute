@@ -25,7 +25,7 @@
   Running from a clone moved to CONTRIBUTING.md. Nasute is described as a tool for any AI system that answers
   questions, not only RAG; the PyPI summary says so from this release.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (12 November 2026)
 
 The first release. Named targets (`http`, or any `module:function`), suites, profiles, claim-level judging counted in code,
 clustered error bars and paired compare (Miller 2024), judge-check, dataset versions, and a demo dataset about a made-up

@@ -3,6 +3,7 @@
 <img src="docs/images/logo.png" alt="Nasute logo: a nasute termite drawn in green and orange" width="160">
 
 Nasute (NAY-soot) is a lightweight evaluation framework for LLMs and LLM agents: it asks a system questions with known answers, has a judge mark them, and tells you whether a change made things better, worse or no different, with error bars.
+
 Named after the nasute, the soldier termite that guards the colony: Nasute guards your system against answers that quietly drift wrong.
 
 <p>
