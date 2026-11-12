@@ -16,6 +16,8 @@ Named after the nasute, the soldier termite that guards the colony: Nasute guard
 ## Features
 
 - **Any system as the target.** A plain chat model, a search-and-answer system (RAG), or anything else behind an HTTP endpoint. Anything without one takes [one Python function](docs/how-to/add-a-target.md).
+- **Chat models with no setup.** `kind = "chat"` takes an OpenAI-compatible address and a model name; no JSON paths ([add a target](docs/how-to/add-a-target.md#a-chat-model)).
+- **Several targets in one command.** `run_targets`, or `--target` given more than once, runs each on the same questions and ranks them ([how](docs/how-to/compare-runs.md#run-several-targets-in-one-command)).
 - **Three judge modes.** Pick one per run:
 
   | Mode | Use it for | Cost and speed |
@@ -32,6 +34,8 @@ Named after the nasute, the soldier termite that guards the colony: Nasute guard
 - **Retrieval scores, when your system cites sources.** Hit rate, recall, MRR and faithfulness to the text it read. Left out when a system names no sources.
 - **Tags and difficulty.** Scores by topic, and by easy, medium and hard ([tag questions](docs/how-to/tag-questions.md)).
 - **Tokens and cost.** For the answers and for the judging, when the system and the judge report them.
+- **A spending cap.** `max_cost` stops a run from asking new questions once answers plus judging cost more than you set ([settings](docs/reference/settings.md)).
+- **Questions side by side.** `concurrency` asks several at once for a cloud API, with the judge's own limit; it stays 1 for a local model.
 - **A static report.** Plain HTML files that work offline and on a phone. No server needed.
 - **Standard library only.** Python 3.11 or newer, nothing else to install.
 

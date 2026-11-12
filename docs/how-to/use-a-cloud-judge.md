@@ -15,8 +15,9 @@ A hosted model is usually stronger than a small local one, and because it is a d
    headers = { Authorization = "env:JUDGE_API_KEY" }
    ```
 
-4. A hosted model takes several requests at once, so you can set `workers = 4` to run four questions together.
-5. Run `nasute judge-check` before you trust the scores, because it tells you how reliable this judge is (see [the judge-check](judge-check.md)).
+4. A hosted model takes several requests at once, so you can set `concurrency = 4` in `[judge]`, and `concurrency = 4` at the top level to ask four questions together.
+5. Set `max_cost` to a dollar amount if you want a run to stop before it spends more. It counts the judge's cost when the service reports one.
+6. Run `nasute judge-check` before you trust the scores, because it tells you how reliable this judge is (see [the judge-check](judge-check.md)).
 
 A few things are worth knowing before you switch.
 

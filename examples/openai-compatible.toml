@@ -5,22 +5,20 @@
 # Every other setting is explained in nasute.example.toml.
 
 dataset = "example"
-workers = 4   # a hosted API takes several requests at once; use 1 for a single local model
+concurrency = 4   # a hosted API takes several requests at once; use 1 for a single local model
+max_cost = 2.0    # US$ per run, answers plus judging, where the API reports cost; 0 = no cap
 
 [judge]
 url = "https://api.example.com/v1"
 model = "judge-model-name"
 headers = { Authorization = "env:MY_API_KEY" }
+concurrency = 4
 # "knowledge": for a plain chat model that cites no sources. Use "quick" or "claims" for a system that does.
 mode = "knowledge"
 
 [targets.mine]   # "mine" matches the example dataset `nasute init` writes
-kind = "http"
+kind = "chat"   # the question goes as the user message; tokens and cost are read from the reply's usage
 label = "Chat model"
-url = "https://api.example.com/v1/chat/completions"
+url = "https://api.example.com/v1"
+model = "model-under-test"
 headers = { Authorization = "env:MY_API_KEY" }
-request = { model = "model-under-test", messages = [{ role = "user", content = "{question}" }] }
-answer = "$.choices[0].message.content"
-# The reply's usage figures, recorded with each answer and totalled per run.
-tokens_in = "$.usage.prompt_tokens"
-tokens_out = "$.usage.completion_tokens"

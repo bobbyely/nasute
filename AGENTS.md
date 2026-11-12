@@ -17,6 +17,7 @@ Plain Python 3.11+, standard library only. No runtime dependencies: keep it so.
 | `src/nasute/assets/` | `report.js`, `report.css` (all pages) and the vendored uPlot, Chart.js and Chart.js boxplot plugin, each with its licence. |
 | `src/nasute/starter/` | What `nasute init` copies out. |
 | `src/nasute/targets/http.py` | The generic target: any JSON endpoint, paths `$.a[0].b`. |
+| `src/nasute/targets/chat.py` | `kind = "chat"`: an OpenAI-compatible chat API. It fills in the http target's paths and calls it, so every http safety check applies; keep it that way. |
 | `src/nasute/datasets/<name>/v<N>.jsonl` | Questions. Header line first. `demo` is ten questions about a made-up handbook (`demo/handbook.md`); `judge-demo` is answers with known faults, to test the judge. Both are used by the tests. |
 | `nasute.example.toml` | Every setting explained. |
 | `examples/` | Settings for an OpenAI-compatible API and for Ollama. The test checks each uses only real settings. |
@@ -45,6 +46,7 @@ Plain Python 3.11+, standard library only. No runtime dependencies: keep it so.
 - **Dataset versions are `major.minor.patch`.** `v2.jsonl` (old) is `2.0.0`; versions sort as number tuples (`manage.bump` picks the part on import). Run summaries store the version as text; an old whole number is shown as `N.0.0`.
 - **Exports share one function.** `run_csv()` and `suite_csv()` in `src/nasute/__init__.py` write the report's CSV files and `runs export`; the copied summary goes through `public()`; text cells that start with `= + - @`, or have one after a `;` or tab, get an apostrophe (`csv_safe`).
 - **A source is a link only if it is http(s) or starts with a single `/`** (`safeUrl` in `report.js`, tested with node); `links` from a target must line up one to one with `sources`.
+- **Runs can ask questions side by side** (`concurrency`). Anything that counts across attempts (progress numbers, spend for `max_cost`) is done under the lock in `run()`'s `save()`; the judge's usage rides on each row, never in a shared total; `results.jsonl` stays in dataset order. Keep it so.
 - **Do not call the live model in tests.** `tests/nasute_test.py` must pass with no network.
 - A new setting goes in `DEFAULTS` and `nasute.example.toml`; the test fails if one is missing. A profile is just a table of settings: no code per profile.
 - `--profile smoke` is the small live run; `deep` takes hours.

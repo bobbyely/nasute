@@ -308,6 +308,136 @@ def release_020_checks():
         assert not any(p.name.startswith("judge-") and p.name != "judge-20260101T000000Z" for p in (tmp / "runs").iterdir())
 
 
+def features_020_checks():
+    """0.2.0 features: the spending cap, concurrency (questions and judge), several targets in one run, the chat target."""
+    import logging
+    import os
+    import threading
+    real = {k: getattr(nasute, k) for k in ("ask_json", "post", "BACKOFF")}
+    real_target = nasute.TARGETS.get("fake")
+    events = []
+    class Catch(logging.Handler):
+        def emit(self, record):
+            events.append(record.getMessage())
+    catch = Catch()
+    logging.getLogger().addHandler(catch)
+
+    def judge_says(cfg, prompt, schema, max_tokens=500, verify=None):
+        nasute.judge_use_add({"total_tokens": 10, "cost": 0.001})   # as ask_json does with a reply's usage
+        return {"claims": [{"claim": "c", "supported": "yes", "vs_reference": "agrees", "why": ""}], "relevancy": "yes", "relevancy_why": ""}
+
+    def make_cfg(tmp, name, **over):
+        return nasute.merge(nasute.DEFAULTS, {"runs": str(tmp / name / "runs"), "report": str(tmp / name / "report"), "profile": "", "limit": 6,
+                                              "judge": {"model": "m"}, "targets": {"demo": {"kind": "fake"}}, **over})
+
+    def run_with(target, cfg):
+        nasute.TARGETS["fake"] = target
+        nasute.run(cfg, "demo", 1, cfg["limit"])
+        d = Path(cfg["runs"]) / nasute.run_ids(cfg)[-1]
+        return json.loads((d / "summary.json").read_text()), [json.loads(x) for x in (d / "results.jsonl").read_text().splitlines()]
+
+    def paid(q, t, timeout, wait=0.0):
+        time.sleep(wait)
+        return {"answer": "an answer", "sources": [], "extracts": [], "first_text_s": 0.1, "total_s": 0.1, "error": None, "cost": 0.01}
+
+    nasute.ask_json, nasute.BACKOFF = judge_says, (0, 0, 0)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            # the cap: 0.011 per attempt, cap 0.025, so the third attempt passes it and nothing new starts
+            s, rows = run_with(paid, make_cfg(tmp, "cap", max_cost=0.025))
+            assert len(rows) == 3 and "spending cap" in s["aborted"] and close(s["usage"]["cost"], 0.03) and close(s["usage"]["judge_cost"], 0.003), (len(rows), s["aborted"], s["usage"])
+            assert "spending_cap_reached" in events and nasute.compare(make_cfg(tmp, "cap")) is None
+            page = next((tmp / "cap" / "report").rglob("runs/*.html")).read_text()
+            assert "spending cap was reached" in page
+            # cost not reported: one warning, and the cap cannot stop the run
+            events.clear()
+            s, rows = run_with(lambda q, t, to: {**paid(q, t, to), "cost": None}, make_cfg(tmp, "nocost", max_cost=0.01, limit=3))   # only the judge's 0.003 counts
+            assert len(rows) == 3 and not s["aborted"] and events.count("cost_unknown") == 1, (events, s["aborted"])
+            # no cap set: no warning
+            events.clear()
+            run_with(lambda q, t, to: {**paid(q, t, to), "cost": None}, make_cfg(tmp, "nocap", limit=2))
+            assert "cost_unknown" not in events
+            # concurrency: the same rows, seeds and totals as one at a time, in dataset order, and faster
+            got, took = {}, {}
+            for n in (1, 4):
+                t = time.monotonic()
+                s, rows = run_with(lambda q, tc, to: paid(q, tc, to, 0.1), make_cfg(tmp, f"c{n}", limit=8, repeats=2, concurrency=n))
+                took[n] = time.monotonic() - t
+                got[n] = ([(r["id"], r["repeat"], r["seed"], r["scores"]) for r in rows], s["usage"]["judge_tokens"], s["usage"]["cost"], s["metrics"]["correctness"]["mean"])
+            assert got[1] == got[4] and got[1][1] == 160, got[1][1:]
+            assert took[4] < took[1] * 0.6, took
+            # a target's own concurrency wins over the top-level one
+            t = time.monotonic()
+            run_with(lambda q, tc, to: paid(q, tc, to, 0.1), make_cfg(tmp, "own", limit=8, targets={"demo": {"kind": "fake", "concurrency": 8}}))
+            assert time.monotonic() - t < took[1] * 0.5
+            # the judge's own limit: questions side by side, but one judge request at a time unless [judge] concurrency says more
+            nasute.ask_json = real["ask_json"]
+            live, peak, lock = [0], [0], threading.Lock()
+            marks = json.dumps({"claims": [], "relevancy": "yes", "relevancy_why": ""})
+            def judge_post(url, body, timeout, headers=None):
+                with lock:
+                    live[0] += 1
+                    peak[0] = max(peak[0], live[0])
+                time.sleep(0.05)
+                with lock:
+                    live[0] -= 1
+                return {"choices": [{"message": {"content": marks}}]}
+            nasute.post = judge_post
+            for jn, want in ((1, lambda p: p == 1), (4, lambda p: p > 1)):
+                peak[0] = 0
+                run_with(paid, make_cfg(tmp, f"j{jn}", limit=8, concurrency=4, judge={"model": "m", "concurrency": jn}))
+                assert want(peak[0]), (jn, peak[0])
+            nasute.ask_json, nasute.post = judge_says, real["post"]
+
+            # several targets in one command: each its own run, ranked; a failing target does not stop the others
+            nasute.TARGETS["fake"] = paid
+            conf = tmp / "many.toml"
+            conf.write_text(f'datasets = ["{(PKG / "datasets").as_posix()}"]\nruns = "runs"\nreport = "report"\n[judge]\nmodel = "m"\n'
+                            '[targets.a]\nkind = "fake"\n[targets.b]\nkind = "fake"\n[targets.broken]\nkind = "no_such_module_here:ask"\n'
+                            '[profiles.both]\nrun_targets = ["a", "b"]\n')
+            code, out = cli(conf, "--log", "text", "run", "--dataset", "demo", "--limit", "5", "--target", "a", "--target", "broken", "--target", "b")
+            nasute.setup_logging("json")
+            assert code == 1 and "2 target(s) ranked by Answer correctness" in out and "1. a  1.00" in out and "broken  failed: ModuleNotFoundError" in out and "5 shared questions" in out, out
+            runs = nasute.summaries(nasute.load_settings(conf))
+            assert sorted(s["target"] for s in runs.values()) == ["a", "b"]
+            code, out = cli(conf, "--log", "text", "run", "--dataset", "demo", "--limit", "5", "--profile", "both", "--max-cost", "0.025")
+            nasute.setup_logging("json")
+            assert code == 0 and "2 target(s) ranked" in out and len(re.findall(r"^  \d\. [ab] .*STOPPED EARLY: the spending cap", out, re.M)) == 2, out   # each target has its own cap
+    finally:
+        nasute.ask_json, nasute.post, nasute.BACKOFF = real["ask_json"], real["post"], real["BACKOFF"]
+        nasute.TARGETS["fake"] = real_target
+        logging.getLogger().removeHandler(catch)
+        nasute.setup_logging("json")
+
+    # the chat target: question as the user message, system prompt, temperature and seed, model; usage read, bad usage dropped
+    from nasute.targets import chat
+    ep = FakeEndpoint()
+    try:
+        os.environ["NASUTE_TEST_KEY"] = "Bearer k"
+        got = chat.ask("Capital of France?", {"url": ep.url + "/v1/", "model": "m1", "system": "Be brief.", "temperature": 0.3, "seed": 2,
+                                               "headers": {"Authorization": "env:NASUTE_TEST_KEY"}}, 5)
+        sent = ep.seen[-1]
+        assert got["answer"] == "Paris." and got["error"] is None and (got["tokens_in"], got["tokens_out"], got["cost"]) == (5, 2, 0.0003) and got["sources"] == [], got
+        assert sent["path"] == "/v1/chat/completions" and sent["headers"]["Authorization"] == "Bearer k" and sent["body"] == {
+            "model": "m1", "messages": [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "Capital of France?"}], "temperature": 0.3, "seed": 2}, sent
+        bad = chat.ask("q", {"url": ep.url + "/bad/v1", "model": "m"}, 5)
+        assert bad["tokens_in"] is None and bad["cost"] is None and bad["tokens_out"] == 2 and ep.seen[-1]["body"]["messages"] == [{"role": "user", "content": "q"}], bad
+        assert chat.ask("q", {"url": "http://127.0.0.1:9/v1", "model": "m"}, 5)["unreachable"]
+        del os.environ["NASUTE_TEST_KEY"]
+        missing = chat.ask("q", {"url": ep.url + "/v1", "headers": {"Authorization": "env:NASUTE_TEST_KEY"}}, 5)
+        assert "NASUTE_TEST_KEY is not set" in missing["error"], missing
+        assert nasute.TARGETS["chat"] is chat.ask
+    finally:
+        ep.close()
+    # the 0.1.0 name of concurrency still works
+    with tempfile.TemporaryDirectory() as tmp:
+        f = Path(tmp) / "old.toml"
+        f.write_text("workers = 3\n")
+        cfg = nasute.load_settings(f)
+        assert cfg["concurrency"] == 3 and "workers" not in cfg
+
+
 def settings_checks():
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "e.toml"
@@ -463,7 +593,7 @@ def review_checks():
             def down(q, t, to):
                 real_sleep(0.05)
                 return {**good(q, t, to), "answer": "", "error": "URLError: refused", "unreachable": True}
-            s, rows, d = go(down, make_cfg(tmp, "abort", limit=8, workers=2))
+            s, rows, d = go(down, make_cfg(tmp, "abort", limit=8, concurrency=2))
             assert s["aborted"] and 3 <= len(rows) < 8 and s["attempts"] == len(rows) and not (d / "results.partial.jsonl").exists(), (len(rows), s["attempts"])
             assert [r["id"] for r in rows] == [q["id"] for q in nasute.load_dataset(*nasute.find_dataset(nasute.DEFAULTS, "demo", 1)[:1], 1)[1][:len(rows)]]
             # 12: judge-check stops when the judge is unreachable, and a run that begins with one does not start
@@ -611,7 +741,7 @@ def robustness_checks():
     a, b = {f"q{i}": 0.0 for i in range(6)}, {f"q{i}": 1.0 if i < 3 else 0.0 for i in range(6)}
     assert nasute.paired(a, b, 0.05, lower_better=True)["verdict"] == "real drop" and nasute.paired(b, a, 0.05, lower_better=True)["verdict"] == "real gain"
 
-    # whole runs with a fake target and judge: strict zero for a timeout, seeds, workers keep order and save time, abort after 3 unreachable
+    # whole runs with a fake target and judge: strict zero for a timeout, seeds, concurrency keeps order and saves time, abort after 3 unreachable
     seen = []
 
     def judge_says(cfg, prompt, schema, max_tokens=500):
@@ -653,14 +783,14 @@ def robustness_checks():
             assert rows[1]["scores"]["correctness"] == 0.0 and rows[1]["scores"]["error_rate"] == 1.0 and rows[1]["scores"]["hit"] == 0.0 and "system error" in rows[1]["reasons"]["correctness"]
             assert s["counts_line"] == "3 asked · 1 scored · 2 system errors · 0 judge errors" and abs(s["metrics"]["correctness"]["mean"] - 1 / 3) < 1e-3 and close(s["metrics_answered"]["correctness"]["mean"], 1.0)
             assert s["causes"]["counts"]["system"] == 2
-            # workers: same order in the file, and faster
+            # concurrency: same order in the file, and faster
             def slow_first(q, tcfg, timeout):
                 real_sleep(0.5 if q.startswith("What time does") else 0.2)
                 return good(q, tcfg, timeout)
             took = {}
             for w in (1, 3):
                 t = time.monotonic()
-                s, rows = run_with(slow_first, make_cfg(tmp, f"w{w}", limit=6, workers=w))
+                s, rows = run_with(slow_first, make_cfg(tmp, f"w{w}", limit=6, concurrency=w))
                 took[w] = time.monotonic() - t
                 assert [r["id"] for r in rows] == [q["id"] for q in nasute.load_dataset(*nasute.find_dataset(nasute.DEFAULTS, "demo", 1)[:1], 1)[1][:6]], w
             assert took[3] < took[1] * 0.7, took
@@ -710,7 +840,10 @@ class FakeEndpoint:
                 body = json.loads(self.rfile.read(n)) if n else None
                 outer.seen.append({"method": self.command, "path": self.path, "body": body, "headers": dict(self.headers)})
                 path = self.path.split("?")[0]
-                if path == "/chat":
+                if path.endswith("/v1/chat/completions"):   # the chat target: answer and usage; under /bad, usage figures that must be dropped
+                    bad = path.startswith("/bad")
+                    self.reply(200, {"choices": [{"message": {"content": "Paris."}}], "usage": {"prompt_tokens": -1 if bad else 5, "completion_tokens": 2, "cost": float("nan") if bad else 0.0003}})
+                elif path == "/chat":
                     self.reply(200, {"choices": [{"message": {"content": " Paris. "}}]})
                 elif path == "/rag":
                     self.reply(200, {"answer": "A", "sources": [{"title": "One"}, {"title": "Two"}, {"nottitle": 1}], "hits": [{"text": "t1"}, {"text": "t2"}]})
@@ -1944,7 +2077,9 @@ def main():
         assert ex.keys() <= nasute.DEFAULTS.keys() and ex["judge"].keys() <= nasute.DEFAULTS["judge"].keys(), p.name
         assert cfg["judge"]["mode"] in ("quick", "claims", "knowledge"), p.name
         for t in ex["targets"].values():
-            assert t.keys() <= example["targets"]["web"].keys() | {"label", "model_url"}, (p.name, t.keys() - example["targets"]["web"].keys())
+            same = {"http": "web", "chat": "chat-model"}[t["kind"]]   # each kind against its own example, plus what any target may set
+            allowed = example["targets"][same].keys() | {"label", "model_url", "concurrency", "temperature", "timeout", "headers", "system"}
+            assert t.keys() <= allowed, (p.name, t.keys() - allowed)
 
     # the seed dataset is well formed and its fingerprint follows the file
     path, version = nasute.find_dataset(nasute.DEFAULTS, "demo")
@@ -1994,6 +2129,7 @@ def main():
     settings_checks()
     judge_prompt_checks()
     release_020_checks()
+    features_020_checks()
     target_checks()
     settings_form_checks()
     suite_checks()

@@ -4,7 +4,7 @@
 # Ollama serves an OpenAI-compatible API on port 11434. Every other setting is explained in nasute.example.toml.
 
 dataset = "example"
-workers = 1   # one local model does one request at a time
+concurrency = 1   # one local model does one request at a time
 
 [judge]
 url = "http://127.0.0.1:11434/v1"
@@ -14,10 +14,7 @@ timeout = 600   # a local judge on a laptop can be slow
 mode = "knowledge"
 
 [targets.mine]   # "mine" matches the example dataset `nasute init` writes
-kind = "http"
+kind = "chat"
 label = "Llama 3.2 on Ollama"
-url = "http://127.0.0.1:11434/v1/chat/completions"
-request = { model = "llama3.2", messages = [{ role = "user", content = "{question}" }], stream = false }
-answer = "$.choices[0].message.content"
-tokens_in = "$.usage.prompt_tokens"
-tokens_out = "$.usage.completion_tokens"
+url = "http://127.0.0.1:11434/v1"
+model = "llama3.2"

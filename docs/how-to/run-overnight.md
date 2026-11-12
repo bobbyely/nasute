@@ -7,7 +7,7 @@ A careful run asks every question several times with the slower judge, which can
 ```toml
 pause = 5          # seconds to wait after every call
 max_temp = 80      # also wait while the CPU is hotter than this (Linux only)
-workers = 1        # one question at a time
+concurrency = 1    # one question at a time
 ```
 
 1. Estimate the time as questions x repeats x (answer time + judge time). Measured with a 7-billion-parameter model on an older laptop, a quick judge takes about 20 to 37 seconds per answer and a claims judge takes about 82 seconds, so a `deep` run of 32 questions takes about 4 to 5 hours.
@@ -16,7 +16,7 @@ workers = 1        # one question at a time
 4. You do not need to watch it. Results are saved as each attempt finishes (in `results.partial.jsonl`), so a crash loses nothing that was already done.
 5. In the morning, `nasute runs` and the report show the finished run.
 
-`max_temp` only waits between calls, and one call can keep the processor busy for tens of seconds, so the temperature can still rise above the limit during a call. Watch it the first time you run this. Raise `workers` only for an endpoint that takes several requests at once, such as a cloud service.
+`max_temp` only waits between calls, and one call can keep the processor busy for tens of seconds, so the temperature can still rise above the limit during a call. Watch it the first time you run this. Raise `concurrency` only for an endpoint that takes several requests at once, such as a cloud service.
 
 ---
 

@@ -39,20 +39,23 @@ It writes `quick.txt`, `split.txt`, `check.txt`, `knowledge.txt`, `knowledge_abs
 `run` is the command that does the actual testing, and it asks every question of a dataset, judges the answers, scores them, saves the run and rewrites the report.
 
 ```text
-nasute run [--profile NAME] [--dataset NAME] [--target NAME] [--version V]
+nasute run [--profile NAME] [--dataset NAME] [--target NAME]... [--version V]
            [--limit N] [--repeats N] [--mode quick|claims] [--label TEXT]
+           [--max-cost USD] [--concurrency N]
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--profile NAME` | Merge the settings table `[profiles.NAME]` over the base settings. An unknown name stops the run. |
 | `--dataset NAME` | The dataset to ask. Without it, Nasute uses the `dataset` setting, and if that is empty, the one dataset whose header names the chosen target. If there is not exactly one, Nasute stops and says so. |
-| `--target NAME` | Ask the dataset's questions of this target instead of the one its header names, which makes a separate suite (`dataset@target`). Without it, the target is the one in the dataset's header. |
+| `--target NAME` | Ask the dataset's questions of this target instead of the one its header names, which makes a separate suite (`dataset@target`). Without it, the target is the one in the dataset's header. Give it more than once (`--target model-a --target model-b`) to run each target in turn and rank them, as `run_targets` does; it overrides that setting. Then the exit code is 1 if any target failed. |
 | `--version V` | A dataset version such as `2`, `2.1` or `2.1.0`. The default is the newest. |
 | `--label TEXT` | Names the run as it starts, for example `--label "prompt change"`. It is the same label `runs label` sets, and the dataset page marks labelled runs on the charts over time, so you can see where a change happened. |
 | `--limit N` | Ask only the first N questions, where `0` means all. This overrides the profile and the `limit` setting. |
 | `--repeats N` | The number of times each question is asked. This overrides the profile, and `0` is ignored. |
 | `--mode quick\|claims` | The judge mode. This overrides `[judge] mode` and the profile. |
+| `--max-cost USD` | The spending cap for each run, overriding `max_cost` (`0` means no cap). |
+| `--concurrency N` | Questions asked at once, overriding `concurrency` and any target's own. |
 
 When your settings file has one target and one dataset, the first run needs no options at all.
 

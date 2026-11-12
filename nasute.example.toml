@@ -67,10 +67,25 @@ pause = 0
 # Also wait, between calls, while the CPU is hotter than this many degrees C. 0 = off. Linux only.
 max_temp = 0
 
-# Questions run at once. Leave at 1 for a language model that does one request at a time (llama.cpp with one slot does).
-# Raise it only for an endpoint that takes parallel requests (a cloud service). Results are still saved in
-# dataset order. `pause` applies after each call, per worker.
-workers = 1
+# Questions asked at once. Leave at 1 for a language model that does one request at a time (llama.cpp with one slot does).
+# Raise it only for an endpoint that takes parallel requests (a cloud service), or set it per target:
+# [targets.<name>] concurrency = 8. Results are still saved in dataset order, and each repeat keeps its seed.
+# "3 questions in a row" unreachable means 3 next to each other in the dataset, whatever order they finish in.
+# `pause` applies after each call, per question being asked. --concurrency overrides it. (0.1.0 called this `workers`;
+# that name still works.)
+concurrency = 1
+
+# A spending cap in US dollars for one run: the answers' cost plus the judge's, as the replies report them.
+# Once the run has spent more, no new question or repeat starts; the ones being asked finish and are kept, so it can
+# go over by that much. The run is then marked stopped early, with the reason. 0 = no cap. --max-cost overrides it.
+# A local model or judge reports no cost; a warning says so once, and only reported cost is counted.
+# With several targets (run_targets), each target's run has its own cap.
+max_cost = 0
+
+# Targets to run in turn on the same questions, each as its own run, then ranked by the main score with
+# cost and speed (and the paired compare, for two). [] = the target the dataset's header names.
+# --target, given once or more, overrides it. A target that fails does not stop the others. Handy in a profile.
+run_targets = []
 
 # If more than this share of answers could not be judged (judge errors), the run is marked incomplete.
 # Judge errors are never counted against the system.
@@ -104,6 +119,8 @@ retries = 2
 # Request headers for a judge that needs a key, e.g. { Authorization = "env:JUDGE_AUTH" }. A value "env:NAME" is read from the
 # environment variable NAME, so the key never sits in this file. Runs record the header names only.
 headers = {}
+# Judge requests at once. 1 suits a local judge; a hosted one can take more (match concurrency, say).
+concurrency = 1
 
 # Your own wording for a judge prompt: a text file per prompt, relative to this file. A prompt not named keeps
 # the built-in text. Names: quick, split, check, knowledge, knowledge_abstain, abstain. Start from the real text
@@ -116,9 +133,12 @@ headers = {}
 # Systems under test, one table each: [targets.<name>]. The name is yours. A dataset's header says which target it is for;
 # `run --dataset X --target Y` asks the same questions of target Y instead. Settings differ by kind:
 #   kind = "http"    any JSON endpoint (targets/http.py), below
+#   kind = "chat"    an OpenAI-compatible chat API, no paths needed (targets/chat.py), below
 #   kind = "my_target:ask"  your own Python function; the module may sit next to this file (docs/how-to/add-a-target.md)
 # label, in any target: optional name the report shows instead of the target's id (tiles, headings, the Systems tab).
 # model_url, in any target: optional /v1 address that names the model that writes the answers. Recorded in each run.
+# concurrency, in any target: questions asked at once of this target, instead of the top-level concurrency.
+# temperature, in any target: sent instead of the top-level temperature (the judge keeps that one).
 
 [targets.web]
 kind = "http"
@@ -142,6 +162,16 @@ tokens_in = ""
 tokens_out = ""
 cost = ""
 # timeout = 60   # seconds; the global timeout is used if this is not set
+
+# A chat model behind an OpenAI-compatible API: the question is the user message. The answer, tokens and cost
+# (if the API reports one) are read from the reply. No sources, so use judge mode knowledge or quick.
+[targets.chat-model]
+kind = "chat"
+url = "http://127.0.0.1:11434/v1"   # the base address, ending /v1
+model = "model-under-test"
+# headers = { Authorization = "env:MY_API_KEY" }
+# system = "Answer in one sentence."   # optional system prompt
+# temperature = 0.0                     # optional; else the top-level temperature
 
 # Profiles: a table of any of the settings above, merged over them by `nasute run --profile NAME`.
 # Options on the command line (--limit, --repeats, --mode) still win.

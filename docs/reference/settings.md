@@ -48,8 +48,16 @@ These settings sit at the top of the file, outside any table, and the table belo
 | `temperature` | `0.0` |
 | `pause` | `0` |
 | `max_temp` | `0` |
-| `workers` | `1` |
+| `concurrency` | `1` (questions asked at once; a target's own `concurrency` wins. 0.1.0 called it `workers`, which still works) |
+| `max_cost` | `0` (no cap; else US$ a run may spend on answers plus judging) |
+| `run_targets` | `[]` (the dataset's own target; else the targets to run in turn and rank) |
 | `max_judge_errors` | `0.1` |
+
+**`concurrency`.** How many questions are asked at once. Keep 1 for a local model that does one request at a time. A target can set its own, for example `concurrency = 8` for a cloud API. Results are saved in dataset order whatever order they finish in, each repeat keeps its seed (its number), and progress lines are numbered as attempts finish. The run stops after 3 questions in a row could not reach the system or the judge: "in a row" means 3 questions next to each other in the dataset, checked in that order. With more than one at once, the questions already being asked when that happens finish first.
+
+**`max_cost`.** A spending cap in US dollars for one run, counting the answers' cost and the judge's, as their replies report them. Once the run has spent more, no new question or repeat starts. The ones being asked finish and are kept, so a run can go a little over. The run is then marked stopped early (`aborted` in its summary, with the reason), which the end summary and the run page show. When a reply reports no cost (a local model, say), a warning says so once and only reported cost counts. With several targets, each run has its own cap. See [run several targets](../how-to/compare-runs.md#run-several-targets-in-one-command).
+
+**`run_targets`.** A list of target names, such as `["model-a", "model-b"]`, usually in a profile. `run` asks each the same questions in turn, each as its own run, then prints one summary ranking them. `--target`, given once or more, overrides it.
 
 ## `[judge]`
 
@@ -64,6 +72,7 @@ The `[judge]` table configures the model that marks the answers. It is kept sepa
 | `cache` | `false` |
 | `retries` | `2` |
 | `headers` | `{}` |
+| `concurrency` | `1` (judge requests at once; a hosted judge can take more) |
 | `prompts` | `{}` (every judge prompt is the built-in one) |
 
 ### `[judge.prompts]`
@@ -96,9 +105,11 @@ Settings for every kind:
 
 | Setting | Meaning |
 | --- | --- |
-| `kind` | `"http"`, or `"module:function"` for your own Python function ([add a target](../how-to/add-a-target.md#a-python-function)). |
+| `kind` | `"http"`, `"chat"`, or `"module:function"` for your own Python function ([add a target](../how-to/add-a-target.md#a-python-function)). |
 | `label` | Optional. The name the report shows for this system instead of the table name, such as `"Support bot"` (a display name only; runs and folders keep the table name). |
 | `model_url` | Optional. A `/v1` address that names the model that writes the answers. Nasute asks it for the model name and records the name in each run. It is never sent questions. |
+| `concurrency` | Optional. Questions asked of this target at once, instead of the top-level `concurrency`. |
+| `temperature` | Optional. Sent to this target instead of the top-level `temperature` (the judge keeps the top-level one). |
 
 ### `kind = "http"`
 
@@ -119,6 +130,28 @@ This is the general-purpose kind, for any HTTP endpoint that answers in JSON, an
 The paths use a small subset of JSONPath, which supports `$.a.b` for a field, `$.a[0].b` for an item, and `$.a[*].b` for every item (items without `b` are skipped), but no filters, no `..` and no slices. A path that selects a list, such as `$.sources`, gives the items of that list, and items that are not text are saved as JSON text. A path that finds nothing is an error for `answer`, but for `sources` and `extracts` it simply gives an empty list.
 
 The http target does not send `temperature` or `seed`, so if your endpoint takes a temperature, put it in `request` yourself.
+
+### `kind = "chat"`
+
+For a model behind an OpenAI-compatible chat API (a hosted service, Ollama, llama.cpp's server, vLLM), with no paths to write. Its code is `src/nasute/targets/chat.py`, which hands the request to the http target, so the same header and redirect rules apply.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `url` | `""` | The base address, ending `/v1`. Nasute posts to `<url>/chat/completions`. |
+| `model` | `""` | The model to ask. Also recorded as the run's answering model. |
+| `headers` | `{}` | As for http: `"env:VARNAME"` values are read from the environment, and only header names are saved. |
+| `system` | none | Optional system prompt, sent before the question. |
+| `temperature` | the top-level `temperature` | Sent with every question, with `seed` (the repeat number). |
+| `timeout` | the global `timeout` | Seconds for one question. |
+
+The question is the user message. The answer is read from `choices[0].message.content`, and `usage.prompt_tokens`, `usage.completion_tokens` and `usage.cost` are recorded when the reply has them. A chat target returns no sources or extracts, so use judge mode `knowledge` or `quick`.
+
+```toml
+[targets.mine]
+kind = "chat"
+url = "http://127.0.0.1:11434/v1"
+model = "llama3.2"
+```
 
 ## `[profiles.<name>]`
 

@@ -6,9 +6,24 @@ A target is the system you want to test, and you add one when you want Nasute to
 
 A target is a `[targets.<name>]` table in `nasute.toml`, with a name that you choose, and the first line of a dataset says which target the dataset is for.
 
+## A chat model
+
+For a model behind an OpenAI-compatible chat API (a hosted service, Ollama, llama.cpp's server, vLLM), use the `chat` kind. It needs no JSON paths.
+
+```toml
+[targets.mine]
+kind = "chat"
+url = "https://api.example.com/v1"        # the base address, ending /v1
+model = "my-model"
+headers = { Authorization = "env:MY_API_KEY" }
+# system = "Answer in one sentence."      # optional system prompt
+```
+
+The question goes as the user message. Nasute reads the answer, and the tokens and cost when the reply gives them. A chat model names no sources, so use judge mode `knowledge` (or `quick`). Every setting is in [settings](../reference/settings.md#kind--chat).
+
 ## An HTTP endpoint
 
-You describe the endpoint in settings, and Nasute builds the requests from your description. The example below is for an OpenAI-compatible chat endpoint.
+For any other endpoint that answers in JSON, you describe it in settings, and Nasute builds the requests from your description. The example below is the same chat API written out by hand, to show the parts.
 
 ```toml
 [targets.mine]
