@@ -30,6 +30,8 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
+<link rel="icon" type="image/png" href="{up}assets/favicon.png">
+<link rel="apple-touch-icon" href="{up}assets/apple-touch-icon.png">
 <link rel="stylesheet" href="{up}assets/uPlot.min.css">
 <link rel="stylesheet" href="{up}assets/report.css">
 </head>

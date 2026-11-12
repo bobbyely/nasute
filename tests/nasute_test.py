@@ -939,7 +939,7 @@ def report_checks():
         assert names == {"index.html", "ds@mine/index.html", "ds@other/index.html", "ds@mine/compare/20260102T000000Z-20260103T000000Z.html"} | \
             {f"ds@mine/runs/2026010{i}T000000Z.html" for i in (1, 2, 3)} | {"ds@other/runs/20260104T000000Z.html"}, names
         assets = {p.name for p in (out / "assets").iterdir()}
-        assert {"report.js", "report.css", "uPlot.iife.min.js", "uPlot.min.css", "uPlot.LICENSE"} <= assets
+        assert {"report.js", "report.css", "uPlot.iife.min.js", "uPlot.min.css", "uPlot.LICENSE", "favicon.png", "apple-touch-icon.png"} <= assets
         for p in pages:
             text = p.read_text()
             m = re.search(r'<script id="data" type="application/json">(.*?)</script>', text, re.S)

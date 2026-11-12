@@ -1,5 +1,7 @@
 # Nasute
 
+<img src="docs/images/logo.png" alt="Nasute logo: a nasute termite drawn in green and orange" width="160">
+
 A self-hosted eval harness for RAG (retrieval-augmented generation: a system that looks things up and then writes an answer) and for language models. It asks a system questions with known answers, has a second AI mark the answers claim by claim, counts, and keeps every run. It tells you whether a change made things better, worse or no different, with a 95% range on every number. Named after the nasute, the soldier termite that guards the colony.
 
 Plain Python 3.11 or newer, standard library only. Any system you can ask a question over HTTP is a target, and anything else takes one Python function.
