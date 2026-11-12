@@ -3,6 +3,7 @@
 <img src="docs/images/logo.png" alt="Nasute logo: a nasute termite drawn in green and orange" width="160">
 
 Nasute (NAY-soot) is a lightweight evaluation framework for LLMs and LLM agents: it asks a system questions with known answers, has a judge mark them, and tells you whether a change made things better, worse or no different, with error bars.
+Named after the nasute, the soldier termite that guards the colony: Nasute guards your system against answers that quietly drift wrong.
 
 <p>
 <img src="docs/images/report-phone-dashboard.png" alt="The report's front page on a phone: each dataset with its systems ranked, then recent runs" width="300">
@@ -32,8 +33,6 @@ Nasute (NAY-soot) is a lightweight evaluation framework for LLMs and LLM agents:
 - **Tokens and cost.** For the answers and for the judging, when the system and the judge report them.
 - **A static report.** Plain HTML files that work offline and on a phone. No server needed.
 - **Standard library only.** Python 3.11 or newer, nothing else to install.
-
-The name is from the Latin *nasutus*, "long-nosed": the nasute is the soldier termite with a nozzle-shaped head that guards the colony.
 
 ## Quick start
 
