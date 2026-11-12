@@ -1178,7 +1178,7 @@ def run(cfg, name, version, limit, target=None, label=""):
     (out / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))   # dataset order
     (out / "results.partial.jsonl").unlink(missing_ok=True)
     summary = summarise(rows, fingerprint, cfg, {
-        "run": run_id, "commit": git_commit(), "target": target, "target_kind": kind, "answering_model": answering, "judge_model": cfg["judge"]["model"], "aborted": aborted,
+        "run": run_id, "commit": git_commit(), "target": target, "target_kind": kind, "answering_model": answering, "judge_model": cfg["judge"]["model"], "aborted": aborted, "capped": bool(capped[0]) and aborted == capped[0],
         "questions": len({r["id"] for r in rows}), "attempts": len(rows), "total_s": round(time.monotonic() - start, 1),
         "judge_reliability": latest_judge_check(cfg, cfg["judge"]["model"], cfg["judge"]["mode"], prompt_record(cfg)),
         "time_to_first_text_s": mean_std([r["first_text_s"] for r in rows])["mean"], "usage": usage_totals(rows)})
@@ -1205,39 +1205,47 @@ MAIN = ["correctness", "abstention", "relevancy", "faithfulness", "context_recal
 def run_many(cfg, name, version, limit, targets, label=""):
     """The same questions asked of each target in turn, each its own run with its own spending cap (so one target's spend never
     cuts another's run short, and each run is like a single one). A target that fails is reported and the rest still run.
-    Then one summary ranks them; with exactly two finished runs, the paired compare follows. -> exit code (1 if any failed)."""
+    Then one summary ranks them; with exactly two finished runs, the paired compare follows. -> exit code (1 if any failed).
+    A run stopped because the system or judge could not be reached failed. One stopped by the spending cap finished, partly:
+    the cap did its job, so it is ranked (marked) and does not fail the command."""
     done, failed = [], []
     for t in targets:
         try:
-            done.append((t, run({**cfg, "judge": dict(cfg["judge"])}, name, version, limit, t, label)))
+            run_id = run({**cfg, "judge": dict(cfg["judge"])}, name, version, limit, t, label)
+            s = read_run(cfg, run_id)[0]
+            if s.get("aborted") and not s.get("capped"):
+                failed.append((t, f"stopped early: {s['aborted']} (run {run_id})"))
+            else:
+                done.append((t, run_id))
         except (Exception, SystemExit) as e:   # SystemExit too: a bad target name stops that target, not the others
             failed.append((t, str(e) if isinstance(e, SystemExit) else f"{type(e).__name__}: {e}"))
             log("target_failed", logging.ERROR, target=t, error=failed[-1][1])
-    lines = many_summary(cfg, done, failed)
+    lines, ranked = many_summary(cfg, done, failed)
     if logging.getLogger().handlers and isinstance(logging.getLogger().handlers[0].formatter, Readable):
         print("\n".join(lines))
     else:
-        log("targets_done", ranked=[t for t, _ in done], failed=dict(failed), summary=lines)
+        log("targets_done", ranked=ranked, failed=dict(failed), summary=lines)
     return 1 if failed else None
 
 
 def many_summary(cfg, done, failed):
-    """Lines ranking finished runs by the main score (with its 95% range), then cost and seconds per answer; failures after."""
+    """-> (lines ranking finished runs by the main score, with its 95% range, cost and seconds per answer, failures after; the targets in that order)."""
     got = [(t, i, *read_run(cfg, i)) for t, i in done]
     main = next((m for m in MAIN if any(s["metrics"][m]["mean"] is not None for _, _, s, _ in got)), "correctness")
     k = got[0][2]["settings"].get("k") if got else None
     score = lambda s: s["metrics"][main]["mean"] if s["metrics"][main]["mean"] is not None else -1
     lines = ["", f"{len(done)} target(s) ranked by {label(main, k)}:"]
-    for n, (t, i, s, rows) in enumerate(sorted(got, key=lambda x: -score(x[2])), 1):
+    got.sort(key=lambda x: -score(x[2]))   # one order for the text and the JSON
+    for n, (t, i, s, rows) in enumerate(got, 1):
         m, u = s["metrics"][main], s.get("usage") or {}
         secs = pages.answer_seconds(rows)
         lines.append(f"  {n}. {t}  " + (f"{m['mean']:.2f}" + (f" (95% range {max(0, m['ci'][0]):.2f}–{min(1, m['ci'][1]):.2f})" if m["ci"] else "") if m["mean"] is not None else "not measured")
                      + (f"  US${u['cost']:.4f}" if u.get("cost") is not None else "") + (f"  {secs:.1f} s per answer" if secs is not None else "")
-                     + f"  run {i}" + (f"  STOPPED EARLY: {s['aborted']}" if s.get("aborted") else ""))
+                     + f"  run {i}" + (f"  PARTIAL, STOPPED EARLY: {s['aborted']}" if s.get("aborted") else ""))
     lines += [f"  -  {t}  failed: {e}" for t, e in failed]
     if len(done) == 2:
         lines += ["", show_compare(compare(cfg, done[0][1], done[1][1]))]
-    return lines
+    return lines, [t for t, *_ in got]
 
 
 def outcome_word(row, pass_at, mode):

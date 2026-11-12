@@ -17,6 +17,8 @@
 - Several targets in one command: `run_targets = ["a", "b"]` (usually in a profile) or `--target` given more than
   once. Each target runs in turn as its own run, with its own spending cap; one that fails does not stop the others.
   A summary ranks them by the main score with its range, cost and seconds per answer, and two get the paired compare.
+  A run that could not reach the system or judge counts as failed (exit 1); one stopped by the spending cap is ranked,
+  marked partial.
 - A `chat` target kind for OpenAI-compatible chat APIs: `url`, `model`, optional `headers`, `system` and `temperature`.
   It reuses the http target, so its header, redirect and usage checks apply. The examples use it.
 - `concurrency` (was `workers`, which still works): questions asked at once, also per target, with `--concurrency` to

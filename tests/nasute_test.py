@@ -315,10 +315,12 @@ def features_020_checks():
     import threading
     real = {k: getattr(nasute, k) for k in ("ask_json", "post", "BACKOFF")}
     real_target = nasute.TARGETS.get("fake")
-    events = []
+    events, ranked = [], []
     class Catch(logging.Handler):
         def emit(self, record):
             events.append(record.getMessage())
+            if record.getMessage() == "targets_done":
+                ranked[:] = record.details["ranked"]
     catch = Catch()
     logging.getLogger().addHandler(catch)
 
@@ -403,10 +405,36 @@ def features_020_checks():
             assert sorted(s["target"] for s in runs.values()) == ["a", "b"]
             code, out = cli(conf, "--log", "text", "run", "--dataset", "demo", "--limit", "5", "--profile", "both", "--max-cost", "0.025")
             nasute.setup_logging("json")
-            assert code == 0 and "2 target(s) ranked" in out and len(re.findall(r"^  \d\. [ab] .*STOPPED EARLY: the spending cap", out, re.M)) == 2, out   # each target has its own cap
+            assert code == 0 and "2 target(s) ranked" in out and len(re.findall(r"^  \d\. [ab] .*PARTIAL, STOPPED EARLY: the spending cap", out, re.M)) == 2, out   # each target has its own cap
+            # every target unreachable: each run stops early and counts as failed, so the command fails
+            nasute.TARGETS["fake"] = lambda q, t, to: {"answer": "", "sources": [], "extracts": [], "first_text_s": None, "total_s": 0, "error": "URLError: refused", "unreachable": True}
+            code, out = cli(conf, "--log", "text", "run", "--dataset", "demo", "--limit", "5", "--target", "a", "--target", "b")
+            nasute.setup_logging("json")
+            assert code == 1 and "0 target(s) ranked" in out and out.count("failed: stopped early: the system under test or the judge could not be reached") == 2, out
+            # the JSON summary ranks by score too, not in command order
+            nasute.TARGETS.update({"low": lambda q, t, to: paid(q, t, to), "high": lambda q, t, to: paid(q, t, to), "mid": lambda q, t, to: paid(q, t, to)})
+            conf.write_text(conf.read_text() + '[targets.c2]\nkind = "low"\n[targets.c9]\nkind = "high"\n[targets.c5]\nkind = "mid"\n')
+            score = {}
+            def judge_by(cfg, prompt, schema, max_tokens=500, verify=None):   # correctness = share of claims that agree: 0.2, 0.9 or 0.5 per target
+                agree = score["now"]
+                return {"claims": [{"claim": str(i), "supported": "yes", "vs_reference": "agrees" if i < agree else "contradicts", "why": ""} for i in range(10)], "relevancy": "yes", "relevancy_why": ""}
+            nasute.ask_json = judge_by
+            real_run = nasute.run
+            def run_scored(cfg, name, version, limit, target=None, label=""):
+                score["now"] = {"c2": 2, "c9": 9, "c5": 5}[target]
+                return real_run(cfg, name, version, limit, target, label)
+            nasute.run = run_scored
+            events.clear()
+            try:
+                code, out = cli(conf, "--log", "json", "run", "--dataset", "demo", "--limit", "5", "--target", "c2", "--target", "c9", "--target", "c5")
+            finally:
+                nasute.run = real_run
+            assert code == 0 and ranked == ["c9", "c5", "c2"], (code, ranked)
     finally:
         nasute.ask_json, nasute.post, nasute.BACKOFF = real["ask_json"], real["post"], real["BACKOFF"]
         nasute.TARGETS["fake"] = real_target
+        for k in ("low", "high", "mid"):
+            nasute.TARGETS.pop(k, None)
         logging.getLogger().removeHandler(catch)
         nasute.setup_logging("json")
 
