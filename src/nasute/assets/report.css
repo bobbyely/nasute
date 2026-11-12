@@ -183,6 +183,8 @@ ol.claims .yes, ol.claims .no, ol.claims .muted { margin-right: 4px; }
   main { padding: 16px 18px 72px; }
   .figures, .sides { grid-template-columns: 1fr; }
   .sm-hide { display: none; }
+  /* long system names wrap, so the score column of a ranking stays on screen */
+  table.sortable td:first-child { white-space: normal; max-width: 11em; }
   /* a wide table scrolls inside its own box, never the page; its first column stays in view */
   table { min-width: max-content; }
   .scroll:has(.narrow) { max-width: none; }
