@@ -17,13 +17,14 @@ runs/                          the `runs` setting
     results.jsonl
     summary.json
 report/                        the `report` setting; written by `nasute report`
-  index.html                   every suite
+  index.html                   the dashboard: each dataset with its systems ranked; recent runs to tick and compare
   assets/                      report.js, report.css, uPlot, Chart.js and its boxplot plugin (shared by pages)
+  datasets/<dataset>.html      one dataset: systems ranked, every run (tick to compare, question by question), charts over time
   <dataset>@<target>/          one suite
     .nasute-suite              marker: this folder is ours
-    index.html                 charts over runs, latest scores, compare, breakdowns
+    index.html                 the old suite page's address: sends the reader on to the dataset page
     runs.csv                   every question of every run
-    runs/<run>.html            one run: charts of its questions, the questions table, one view per question (#q-<id>)
+    runs/<run>.html            one run: scores, the questions and their outcomes, charts, one view per question (#q-<id>)
     runs/<run>.csv             the run's attempts (also .results.jsonl and .summary.json)
     compare/<a>-<b>.html       what changed between two runs
 ```

@@ -19,7 +19,7 @@ A few rules apply.
 - A run that stopped early cannot be a baseline, and deleting a baseline needs `--yes`, as in `nasute runs delete RUN --yes`.
 - Labels and baselines live only in `runs/index.json`, so no run folder is touched. After `label`, `baseline` or `delete`, run `nasute report` so that the report shows the change.
 
-The suite page marks the baseline and shows each score's change against it.
+The dataset page marks the baseline in its list of runs, and each run page shows each score's change against it.
 
 ---
 

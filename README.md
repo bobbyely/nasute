@@ -8,14 +8,42 @@ Plain Python 3.11 or newer, standard library only. Any system you can ask a ques
 
 ## Quick start
 
+**Install.** Nasute uses only Python's standard library, so pipx is the way to install it; there is no Docker image, and none is needed.
+
 ```bash
-pipx install nasute                   # or: pip install nasute
-nasute init mytest && cd mytest        # a starter folder: nasute.toml and an example dataset
-# edit [targets.mine] and [judge] in nasute.toml, then:
-nasute run --profile smoke             # a quick look; the report is written to report/index.html
+pipx install nasute                     # or, until it is on PyPI: pipx install git+https://github.com/bobbyely/nasute
 ```
 
-The full walk-through, which runs with no account and no model, is the [Quick start](docs/tutorial.md).
+**Try the demo**, with no account and no model. In one terminal start the stand-in system and judge, and in another make a folder set up for it and run:
+
+```bash
+nasute demo-server                      # leave it running
+nasute init try --demo && cd try        # in a second terminal
+nasute run --profile smoke
+```
+
+Each question gets a line as it is marked, such as `[2/3] water-boils ... right (0.0 s)`. The run ends with its scores, each with a 95% range, and a link to its page in the report.
+
+**Point it at your own model.** Run `nasute init mytest` (without `--demo`) and edit `[targets.mine]` and `[judge]` in `mytest/nasute.toml`. Ready-made settings: [a model behind an OpenAI-compatible API](examples/openai-compatible.toml) and [a model run by Ollama](examples/ollama.toml). Then `nasute run --profile smoke` from that folder.
+
+**Open the report.** Open `report/index.html` in a browser, or run `nasute serve` and visit `http://127.0.0.1:8765/`. The front page shows each dataset with its systems ranked; click through to a dataset and then to a run, or tick runs to compare them. To have the printed link use your own web address, set `report_url` (see [settings](docs/reference/settings.md)).
+
+Progress prints as short lines at a terminal and as JSON lines when the output goes to a file or a pipe, for a program that reads logs; `--log text` or `--log json` picks one ([commands](docs/reference/commands.md)).
+
+The full walk-through is the [Quick start](docs/tutorial.md).
+
+## How do I…
+
+- [test my own endpoint or model?](docs/how-to/add-a-target.md)
+- [write questions, and change them safely?](docs/how-to/write-a-dataset.md) Or [import them from a spreadsheet](docs/how-to/import-a-csv.md).
+- [tag questions?](docs/how-to/tag-questions.md) Tags group the scores in the report, by topic and by difficulty.
+- [compare two models, or two runs?](docs/how-to/compare-runs.md)
+- [mark a baseline, or label a run?](docs/how-to/baselines-and-labels.md)
+- [see why a question failed?](docs/how-to/read-a-run-page.md)
+- [take the results into a spreadsheet?](docs/how-to/export-a-run.md)
+- [use a hosted model as the judge?](docs/how-to/use-a-cloud-judge.md)
+- [check the judge marks fairly?](docs/how-to/judge-check.md)
+- [run a long test overnight?](docs/how-to/run-overnight.md)
 
 ## Documentation
 

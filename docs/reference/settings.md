@@ -31,6 +31,7 @@ These settings sit at the top of the file, outside any table, and the table belo
 | `datasets` | `["datasets"]` |
 | `runs` | `"data/runs"` |
 | `report` | `"data/report"` |
+| `report_url` | `""` (the link printed after a run is a `file://` address; set it to where the report folder is served, and the link starts with it) |
 | `dataset` | `""` |
 | `judge_set` | `""` |
 | `k` | `5` |

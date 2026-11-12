@@ -97,19 +97,25 @@ A smoke test is a quick look that asks the first 3 questions once and uses the q
 nasute run --profile smoke
 ```
 
-Nasute prints one JSON log line for each step and then a plain summary, which ends like this:
+Nasute prints one short line for each question as it is marked, then a summary:
 
 ```text
-3 asked · 3 scored · 0 system errors · 0 judge errors
-Hit rate@5: 1.00 (95% CI 0.34–1.00). A right source was among the top k found.
-Recall@5: 1.00 (95% CI 0.34–1.00). Share of the right sources found in the top k.
-MRR (mean reciprocal rank): 1.00 (95% CI 0.34–1.00). How near the top the first right source came.
-Faithfulness: 1.00 (95% CI 0.34–1.00). Share of the answer's claims backed by the text it read.
-Answer correctness: 1.00 (95% CI 0.34–1.00). How well the answer matches the reference answer.
-Answer relevancy: 1.00 (95% CI 0.34–1.00). Does the answer address the question.
-Abstention accuracy: 1.00 (95% CI 0.21–1.00). Says it doesn't know when there's no answer.
-Error rate: 0.00 (95% CI 0.00–0.56). Share of attempts where the system failed.
+Run 20261112T005857Z: example v1.0.0 asked of mine, 3 questions, quick judge, smoke profile
+[1/3] capital-france ... right (0.0 s)
+[2/3] water-boils ... right (0.0 s)
+[3/3] made-up-treaty ... declined (0.0 s)
+Report written: mytest/report
+
+Run 20261112T005857Z finished in 0 s: 3 asked · 3 scored · 0 system errors · 0 judge errors
+  Faithfulness         1.00  (95% range 0.34–1.00)
+  Answer correctness   1.00  (95% range 0.34–1.00)
+  Answer relevancy     1.00  (95% range 0.34–1.00)
+  Abstention accuracy  1.00  (95% range 0.21–1.00)
+  Error rate           0.00  (95% range 0.00–0.56)
+Report: file:///.../mytest/report/example%40mine/runs/20261112T005857Z.html
 ```
+
+A question that fails gets a line that starts with WARNING and says why, such as `system error: TimeoutError`. The summary lists only the scores this run measured: the example questions name no sources, so there is no Hit rate. It also lists any system errors, the tokens and cost when the system or the judge reports them, and a link to the run's page in the report. When the output goes to a file or another program rather than a terminal, Nasute writes the same events as JSON lines instead; see [the `--log` option](reference/commands.md).
 
 Every score lies between 0 and 1 and comes with its 95% range. The ranges are wide because two or three questions cannot rule out much. Every answer here scored exactly 1, so the usual formula has no spread to work with, and Nasute uses a Wilson interval that counts questions instead (see [the statistics](explanation/statistics.md)). The run is saved under `runs/`, and the report is written to `report/` when the run ends.
 
@@ -121,11 +127,11 @@ The report is plain HTML, so you can open the file in your browser without runni
 mytest/report/index.html
 ```
 
-If your browser refuses to open local files, run `nasute serve` and visit `http://127.0.0.1:8765/` instead. You will see one row for the suite `example@mine`, which is one dataset tested on one system. Click its run count to open the suite page, which has the scores over time, the table of runs and a link to every question of the run.
+If your browser refuses to open local files, run `nasute serve` and visit `http://127.0.0.1:8765/` instead. The front page is a dashboard: a card for the dataset `example` with its system, `mine`, and its latest score, and a table of recent runs. Click the dataset's name to see every run on it, or a run's date to open the run itself: its scores first, then every question with its outcome (right, partly right, wrong, declined, made something up or a system error), then the charts.
 
-![A suite page: the headline sentence, three big numbers and the Scores table](images/report-suite.png)
+![A run page: the answer in one sentence, the headline scores, then every question](images/report-run.png)
 
-*A suite page from a demo report with more runs than your first one. It starts with the answer in one sentence, then the Scores table with each score's range and its change since the baseline.*
+*A run page from a demo report. It starts with the answer in one sentence and the headline scores, each with its range and its change since the run before, then lists every question with its outcome.*
 
 ## 8. Run again and compare
 

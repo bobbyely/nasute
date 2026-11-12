@@ -24,8 +24,13 @@ def say(text=""):
 
 # ---- init ---------------------------------------------------------------------------------------
 
-def init(folder):
-    """Copy starter/ into `folder`: nasute.toml and datasets/example/v1.jsonl. Never overwrites."""
+# `init --demo`: the starter settings pointed at `nasute demo-server`, so the demo is three commands with no editing.
+DEMO = {'url = "http://127.0.0.1:8000/ask"': 'url = "http://127.0.0.1:8700/ask"', '# sources = "$.sources[*].title"': 'sources = "$.sources[*].title"  ',
+        '# extracts = "$.sources[*].text"': 'extracts = "$.sources[*].text"  ', 'url = "http://127.0.0.1:8080/v1"': 'url = "http://127.0.0.1:8700/v1"'}
+
+
+def init(folder, demo=False):
+    """Copy starter/ into `folder`: nasute.toml and datasets/example/v1.jsonl. Never overwrites. demo: settings for `nasute demo-server`."""
     folder = Path(folder)
     files = {folder / "nasute.toml": HERE / "starter" / "nasute.toml", folder / "datasets" / "example" / "v1.jsonl": HERE / "starter" / "example.jsonl"}
     taken = [str(t) for t in files if t.exists()]
@@ -36,6 +41,14 @@ def init(folder):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
         say(f"wrote {target}")
+    if demo:
+        text = (folder / "nasute.toml").read_text()
+        for a, b in DEMO.items():
+            assert a in text, f"starter nasute.toml no longer has {a!r}"   # the starter changed: change DEMO with it
+            text = text.replace(a, b, 1)
+        (folder / "nasute.toml").write_text(text)
+        say(f"\nSettings point at the demo server. Start it in another terminal (nasute demo-server), then from {folder}:\n  nasute run --profile smoke")
+        return
     say(f"\nNext: edit the [targets.mine] table in {folder / 'nasute.toml'}, then from that folder:\n"
         "  nasute dataset check example\n  nasute run --profile smoke\n"
         "  nasute report      (then open report/index.html)")

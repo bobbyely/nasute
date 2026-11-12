@@ -43,7 +43,7 @@ The check has limits that you should keep in mind.
 - It tests the judge on 47 hand-made answers about 7 questions, so it does not prove that the judge is right on your questions.
 - The set covers Wikipedia-style facts, so for another subject you should write a judge set for it, as described in [check the judge](../how-to/judge-check.md).
 - In the case study the judge and the system were the same model, and the check does not measure the extra kindness a model shows to its own text, so use a different judge if you can.
-- If you change the judge or the prompts, run the check again. Each run records the newest check for its judge model and mode, and the suite page shows it under "Judge reliability".
+- If you change the judge or the prompts, run the check again. Each run records the newest check for its judge model and mode, and the run page shows it under "Judge reliability".
 
 ---
 

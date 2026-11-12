@@ -12,7 +12,7 @@ When Nasute writes the report, it puts three files beside each run page, in `rep
 
 Each suite folder also has `runs.csv`, which has one row for every question in every run of the suite: the run, its date, profile, judge mode, target, models and dataset version, then the question id, tags, difficulty, the mean of each score over the repeats, and how many attempts and errors there were. That is the file to use for a chart of one question over time.
 
-On the run page the links are in a line that reads "Download", and on the suite page there is "Download all runs (CSV)". They are ordinary links, so they work when the report is opened from disk.
+On the run page the links are in a line that reads "Download", and at the foot of the dataset page there is "Download every run of a system (CSV)", one link for each system. They are ordinary links, so they work when the report is opened from disk.
 
 ## From the command line
 

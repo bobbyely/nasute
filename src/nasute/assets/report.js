@@ -1,5 +1,5 @@
 // Draws every Nasute report page from the JSON block in the page (<script id="data">). One file for all four page kinds:
-// overview, suite, run, compare. No server, no network: it needs only this file, report.css and uPlot (uPlot.iife.min.js, vendored).
+// overview (the dashboard), dataset, run, compare. No server, no network: it needs only this file, report.css and uPlot (uPlot.iife.min.js, vendored).
 // All text from datasets, answers and the judge goes in with textContent (through h()), never as HTML, and no handler is written into markup.
 // The pages are laid out like a short paper: tables with three rules, numbered figures, footnote-style notes, definitions in a popover.
 // uPlot 1.6.32 (MIT), from npm; SHA-256 of uPlot.iife.min.js: 19c8d4c6ad88929a79f4ae49d6f7161566dfd0ba3d15cc495e974f787eb78f1f
@@ -24,7 +24,7 @@ function h(tag, props, ...kids) {
 const SCORES = ["hit", "recall", "mrr", "faithfulness", "correctness", "relevancy", "context_recall", "abstention", "error_rate"];
 const HEADLINE = ["correctness", "faithfulness", "hit", "abstention", "error_rate"];
 // Every name and definition comes from the glossary in the page data (one source, so another wording or language is a data change).
-const K = (D.latest || D.summary || D.compare || {}).k;   // how many retrieved sources count; fills the "@k" in Hit rate@k and Recall@k
+const K = (D.summary || D.compare || D).k;   // how many retrieved sources count; fills the "@k" in Hit rate@k and Recall@k
 const name = (m, k = K) => G[m].term.replace("@k", k ? "@" + k : "@k");
 const cap = t => t[0].toUpperCase() + t.slice(1);
 const plain = m => cap(G[m].plain) + ".";
@@ -100,9 +100,8 @@ function reading() {
 }
 
 // ---- page frame -----------------------------------------------------------------------------------------
-const crumbs = (...parts) => h("nav", { class: "crumbs", "aria-label": "Breadcrumb" }, h("a", { href: (D.page === "overview" ? "" : "../".repeat(D.page === "suite" ? 1 : 2)) + "index.html", text: "Nasute" }),
+const crumbs = (...parts) => h("nav", { class: "crumbs", "aria-label": "Breadcrumb" }, h("a", { href: UP + "index.html", text: "Nasute" }),
   parts.map(([href, text]) => [" / ", href ? h("a", { href, text }) : text]));
-const suiteName = S => `${S.dataset} · asked of ${S.target_label || S.target}`;   // a suite is one dataset asked of one system
 function finish(...more) { add(more, notesSection(), reading(), pop); }
 
 function groupTable(groups, first) {
@@ -170,74 +169,33 @@ function drawChart(host, m, rs, runHref, big) {
   }
 }
 
-// ---- overview ------------------------------------------------------------------------------------
-// A small line of one score over the runs, with its first and last value written beside it (the labels make it readable).
-function spark(runs, m, W = 90) {
-  const pts = runs.map((r, i) => [i, r.metrics[m] && r.metrics[m].mean]).filter(p => p[1] != null);
-  if (!pts.length) return "–";
-  const H = 24, x = i => runs.length < 2 ? W / 2 : 3 + i * (W - 6) / (runs.length - 1), y = v => H - 3 - v * (H - 6);
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", W); svg.setAttribute("height", H); svg.setAttribute("class", "spark"); svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `${name(m)}, first to last run: ${f2(pts[0][1])} to ${f2(pts[pts.length - 1][1])}`);
-  // colours go in as style so they follow the light/dark setting (var() does not work in SVG attributes)
-  const el = (t, a, style) => { const e = document.createElementNS("http://www.w3.org/2000/svg", t); for (const k in a) e.setAttribute(k, a[k]); Object.assign(e.style, style); svg.append(e); };
-  el("line", { x1: 0, x2: W, y1: y(0), y2: y(0) }, { stroke: "var(--rule)" });
-  if (pts.length > 1) el("polyline", { fill: "none", "stroke-width": 1.5, points: pts.map(p => x(p[0]) + "," + y(p[1])).join(" ") }, { stroke: "var(--accent)" });
-  const last = pts[pts.length - 1];
-  el("circle", { cx: x(last[0]), cy: y(last[1]), r: 2.5 }, { fill: "var(--accent)" });
-  return h("span", { class: "sparkwrap" }, h("span", { class: "end", text: f2(pts[0][1]) }), svg, h("span", { class: "end", text: f2(last[1]) }));
-}
-
 // A number that looks fine when it is bad is a trap: an error rate over 10%, or any other score under 0.5, is shown in the warning colour.
 const WARN_ERR = 0.1, WARN_LOW = 0.5;
 const warnClass = (m, v) => v == null ? "" : (m === "error_rate" ? v > WARN_ERR : v < WARN_LOW) ? "warn" : "";
 const failedWords = v => `${Math.round(v * 100)}% of attempts failed`;
 
-// A table you sort by clicking a heading. cols: {t: heading, get: item -> value to sort by, show: item -> cell content, left: left-aligned, desc: first click sorts high to low}.
-function sortable(cols, items, start = 0, dir = 1) {
+// A table you sort by clicking a heading. cols: {t: heading, get: item -> value to sort by, show: item -> cell content, left: left-aligned, desc: first click sorts high to low, cls: e.g. sm-hide}.
+function sortable(cols, items, start = 0, dir = 1, cls = "") {
   const st = { i: start, dir }, head = h("tr"), body = h("tbody");
   const paint = () => {
     [...head.children].forEach((th, i) => th.setAttribute("aria-sort", i === st.i ? (st.dir > 0 ? "ascending" : "descending") : "none"));
     const v = it => cols[st.i].get(it);
     body.replaceChildren(...[...items].sort((a, b) => { const x = v(a), y = v(b); return x == null ? 1 : y == null ? -1 : (x < y ? -1 : x > y ? 1 : 0) * st.dir; })
-      .map(it => h("tr", {}, cols.map(c => h("td", { class: c.left ? "left" : "" }, c.show(it))))));
+      .map(it => h("tr", {}, cols.map(c => h("td", { class: (c.left ? "left " : "") + (c.cls || "") }, c.show(it))))));
   };
   cols.forEach((c, i) => {
     const b = h("button", { type: "button", class: "sort", text: c.t });
     b.addEventListener("click", () => { st.dir = st.i === i ? -st.dir : c.desc ? -1 : 1; st.i = i; paint(); });
-    head.append(h("th", { class: c.left ? "left" : "", "aria-sort": "none" }, b));
+    head.append(h("th", { class: (c.left ? "left " : "") + (c.cls || ""), "aria-sort": "none" }, b));
   });
   paint();
-  return h("div", { class: "scroll" }, h("table", { class: "sortable" }, h("thead", {}, head), body));
+  return h("div", { class: "scroll" }, h("table", { class: "sortable " + cls }, h("thead", {}, head), body));
 }
 // A mean as a dot on a 0 to 1 track with a band for its 95% interval, the number beside it; the title says the same in words.
 const rangeBar = (s, m) => {
   const lo = s.ci ? Math.max(0, s.ci[0]) : s.mean, hi = s.ci ? Math.min(1, s.ci[1]) : s.mean;
   return h("span", { class: "rb", title: `${f2(s.mean)}${s.ci ? `, 95% range ${f2(lo)} to ${f2(hi)}` : ""}` }, h("i", { style: `--lo:${lo.toFixed(3)};--hi:${hi.toFixed(3)};--v:${s.mean.toFixed(3)}` }), h("b", { class: warnClass(m, s.mean), text: f2(s.mean) }));
 };
-const metricCol = (m, get, k, bar) => ({ t: name(m, k), desc: m !== "error_rate", get: r => (get(r)[m] || {}).mean, show: r => { const s = get(r)[m]; return s && s.mean != null ? bar ? rangeBar(s, m) : [h("span", { class: warnClass(m, s.mean), text: f2(s.mean) }), s.ci ? h("small", { class: "ci", text: " " + spread(s) }) : null] : "–"; } });
-
-function overview() {
-  add(crumbs(), h("h1", { text: "Nasute" }), h("p", { class: "lede", text: "Each row is one set of questions tested on one system, with all its runs. Click a heading to sort, a run count to see its runs. Scores run from 0 (bad) to 1 (perfect)." }));
-  if (!D.suites.length) { add(h("p", { class: "empty", text: "No runs yet. Start one with: nasute run --profile smoke" })); finish(); return; }
-  const last = s => s.runs[s.runs.length - 1];
-  // shortcut: the trend is the sparkline of the answer-correctness means, nothing more (no paired test here; the suite page has the real one).
-  const cols = [
-    { t: "Dataset", left: true, get: s => s.dataset.toLowerCase(), show: s => `${s.dataset} v${ver(last(s).dataset.version)}` },
-    { t: "Tested on", left: true, get: s => (s.target_label || s.target).toLowerCase(), show: s => s.target_label || s.target },
-    { t: "Last run", desc: true, get: s => last(s).run, show: s => [h("a", { href: `${s.folder}/runs/${last(s).run}.html`, text: when(last(s).run) }), last(s).aborted ? h("small", { class: "sub", text: "stopped early" }) : null, last(s).incomplete ? h("small", { class: "sub", text: "incomplete" }) : null] },
-    metricCol("correctness", s => last(s).metrics, K, true), metricCol("faithfulness", s => last(s).metrics, K, true), metricCol("error_rate", s => last(s).metrics, K),
-    { t: "Trend", get: s => s.runs.length < 2 ? null : (last(s).metrics.correctness || {}).mean - (s.runs[0].metrics.correctness || {}).mean, show: s => s.runs.length > 1 ? spark(s.runs, "correctness", 90) : h("span", { class: "muted", text: "Only one run so far" }) },
-    { t: "Runs", desc: true, get: s => s.runs.length, show: s => h("a", { href: `${s.folder}/index.html#runs`, text: plural(s.runs.length, "run") }) },
-    { t: "Questions", get: () => null, show: s => h("a", { href: `${s.folder}/runs/${last(s).run}.html`, text: "Latest run →" }) }];
-  add(sortable(cols, D.suites, 2, -1));
-  for (const j of D.judges) {
-    const jc = j.check, ms = jc ? SCORES.filter(m => jc.metrics[m]) : [];
-    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. ",
-      j.folder ? h("a", { href: `${j.folder}/index.html`, text: "Details" }) : null, j.folder ? "." : null));
-  }
-  finish();
-}
 
 // The marker's latest check (looked up when the report is written): which set, how many items, when, how it scored, and the marks it got wrong.
 function markerCheck(jc, since) {
@@ -248,7 +206,7 @@ function markerCheck(jc, since) {
     jc.wrong.length ? more(`${plural(jc.wrong.length, "mark")} it got wrong`, h("ul", { class: "plain" }, jc.wrong.map(x => h("li", {}, h("b", { text: x.id }), ` ${name(x.metric)}: got ${x.got == null ? "no mark" : f2(x.got)}, expected ${f2(x.expected[0])}–${f2(x.expected[1])}`)))) : null];
 }
 
-// ---- per-question charts (suite page) ---------------------------------------------------------------
+// ---- per-question charts (run page) ---------------------------------------------------------------
 // Two canvas charts of the latest run, drawn with Chart.js and its boxplot plugin (both vendored in assets/, see the README):
 // a scatter of one score against another (faithfulness against correctness), and box plots of one score by group. Every dot is a question and
 // opens it in the table below. Colours come from the CSS (--c0..--c2 plus grey), so light and dark follow the device.
@@ -280,6 +238,17 @@ function pageRange(total, page, per = PER_PAGE) {
   const pages = Math.max(1, Math.ceil(total / per)), p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
   return { page: p, pages, from: (p - 1) * per, to: Math.min(total, p * per) };
 }
+// Can these runs be compared question by question? Only on the same dataset (fileToo: the same version of it, too).
+const likeForLike = (rs, fileToo) => new Set(rs.map(r => fileToo ? r.dataset.sha256 : r.dataset.name)).size === 1;
+// What became of one question in one run, from its mean score (P: correctness that counts as right; the same rule as outcome_word() in __init__.py): right, partly, wrong; declined or made something up; or a system error.
+function outcome(v, unanswerable, errors, attempts, mode, P = 0.75) {
+  if (attempts && errors === attempts) return { word: "system error", mark: "E", cls: "bad" };
+  if (v == null) return { word: "not judged", mark: "?", cls: "na" };
+  if (unanswerable) return v >= 1 ? { word: "declined", mark: "✓", cls: "good" } : v > 0 ? { word: "declined, with an error", mark: "½", cls: "part" } : { word: "made something up", mark: "✗", cls: "bad" };
+  return v >= P ? { word: "right", mark: "✓", cls: "good" } : v > 0 ? { word: mode === "knowledge" ? "right, with an error" : "partly right", mark: "½", cls: "part" } : { word: "wrong", mark: "✗", cls: "bad" };
+}
+// A trend needs two points: the over-time chart of a score is drawn only when at least two runs measured it.
+const enough = (rs, m) => rs.filter(r => r.metrics[m] && r.metrics[m].mean != null).length >= 2;
 // stats:end
 
 const GROUPERS = {
@@ -406,8 +375,9 @@ if (window.Chart && !Chart.Interaction.modes.boxRow) Chart.Interaction.modes.box
   const box = chart.data.datasets[0].data[row];   // a group's statistics, or [] when it is too small for a box
   return e.y >= a.top && e.y <= a.bottom && el && box && !Array.isArray(box) ? [{ element: el, datasetIndex: 0, index: row }] : [];
 };
+const boxScores = qs => ["correctness", "abstention", "faithfulness", "relevancy", "hit", "mrr"].filter(m => qs.some(q => q.means[m] != null));
 function boxFigure(qs, open) {
-  const scores = ["correctness", "faithfulness", "relevancy", "hit", "mrr"].filter(m => qs.some(q => q.means[m] != null));
+  const scores = boxScores(qs);
   const st = { score: scores[0], by: "difficulty" };
   const canvas = h("canvas", { tabindex: "0", role: "img" }), wrap = h("div", { class: "plot" }, canvas), note = h("p", { class: "caption" }), live = h("p", { class: "sr", "aria-live": "polite" }), alt = h("div"), gate = tapGate(open);
   let chart = null;
@@ -452,121 +422,216 @@ function chartsSection(qs, open) {
   for (const q of qs) for (const t of q.tags) tagN.set(t, (tagN.get(t) || 0) + 1);
   // shortcut: datasets have no "origin" field, so it is read from the tags: the commonest tag after the first (the first is the topic); a lone tag is its own origin. Add a real field if datasets start to use one.
   for (const q of qs) q.origin = q.tags.length > 1 ? q.tags.slice(1).sort((a, b) => tagN.get(b) - tagN.get(a) || a.localeCompare(b))[0] : q.tags[0] || "untagged";
-  const figs = [scatterFigure(qs, open), boxFigure(qs, open)];
+  // a chart with nothing in it is left out: the scatter needs both scores on some question, the box plots any score
+  const figs = [qs.some(q => q.means.faithfulness != null && q.means.correctness != null) ? scatterFigure(qs, open) : null, boxScores(qs).length ? boxFigure(qs, open) : null].filter(Boolean);
+  if (!figs.length) return null;
   const all = () => figs.forEach(f => f.draw());
   requestAnimationFrame(all);   // after the figures are in the page, so the canvases have a width
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", all);
   return h("div", { class: "charts" }, figs.map(f => f.el));
 }
 
-// ---- suite ---------------------------------------------------------------------------------------
-// Three levels: the answer (title, one sentence, three big numbers), then what explains it (scores by group, charts, failures), then details folded away.
-const GROUPS = [["Answers", ["correctness", "faithfulness", "relevancy", "abstention"]], ["Finding sources", ["hit", "recall", "mrr", "context_recall"]], ["Reliability", ["error_rate"]]];
-const more = (summary, ...kids) => h("details", { class: "more" }, h("summary", { text: summary }), kids);
+// ---- shared by the dashboard and the dataset page: runs tables you can tick, and comparing the ticked runs -----------------------
+const ORDER = ["correctness", "abstention", "relevancy", "faithfulness", "context_recall", "hit", "recall", "mrr", "error_rate"];   // main score first
+const HEAD = ["correctness", "abstention", "faithfulness", "hit", "error_rate"];   // what a runs table has room for
+const shown = (runs, list = HEAD) => list.filter(m => runs.some(r => r.metrics[m] && r.metrics[m].mean != null));   // a score no run measured gets no column
+const mainOf = runs => shown(runs, ["correctness", "abstention", "faithfulness", "hit"])[0];
+const perCost = r => r.usage && r.usage.per_answer ? r.usage.per_answer.cost : null;
+const secs = x => x == null ? "–" : x < 10 ? `${x.toFixed(1)} s` : `${Math.round(x)} s`;
+const na = () => h("span", { class: "na", text: "–", title: "not measured" });   // quiet, never the warning colour
+const runHref = r => `${UP}${r.folder}/runs/${r.run}.html`;
+const scoreCell = (r, m, bar, ci = true) => { const s = r.metrics[m]; return !s || s.mean == null ? na() : bar ? rangeBar(s, m) : [h("span", { class: warnClass(m, s.mean), text: f2(s.mean) }), ci && s.ci ? h("small", { class: "ci", text: " " + spread(s) }) : null]; };
+const scoreCol = (m, bar, cls, ci = true) => ({ t: name(m), desc: m !== "error_rate", cls, get: r => (r.metrics[m] || {}).mean, show: r => scoreCell(r, m, bar, ci) });   // ci: the 95% range beside the number
+// The main score shows everywhere; on a phone only it; on a middling screen also error rate and abstention, so cost and speed keep their room.
+const side = (m, main) => m === main ? "" : ["error_rate", "abstention"].includes(m) ? "sm-hide" : "sm-hide md-hide";
+const costCol = cls => ({ t: "Cost / answer", cls, get: perCost, show: r => perCost(r) == null ? na() : money(perCost(r)) });
+const speedCol = cls => ({ t: "Seconds / answer", cls, get: r => r.answer_s, show: r => secs(r.answer_s) });
+const runWords = r => `${r.judge_mode || "quick"} judge${r.profile ? ", " + r.profile : ""}${r.repeats > 1 ? ", ×" + r.repeats : ""}`;
+const dateCell = (r, where) => [h("a", { href: runHref(r), text: when(r.run) }), h("small", { class: "sub sm-only", text: where === "all" ? `${r.dataset.name} · ${r.target_label}` : r.target_label }), r.label ? h("small", { class: "sub", text: `“${r.label}”` }) : null,
+  r.aborted ? h("small", { class: "sub warn", text: "stopped early" }) : null, r.incomplete ? h("small", { class: "sub warn", text: "incomplete" }) : null];
 
-function suite() {
-  const runs = D.runs, latest = D.latest, c = D.compare, S = D.suite, byId = Object.fromEntries(runs.map(r => [r.run, r]));
-  const lr = byId[latest.run], ref = c && byId[c.a], refWord = ref && ref.baseline ? "baseline" : "previous run";
-  const cm = latest.metrics, mean = m => cm[m] && cm[m].mean, pm = c && !c.warning ? c.metrics : {};
-  const change = m => { const p = pm[m]; return !p || p.delta == null ? null : h("span", {}, sgn(p.delta), " ", verdict(p.verdict)); };
-  add(crumbs([null, suiteName(S)]), h("h1", { text: suiteName(S) }));
+// A sortable table of runs whose first column is a tick box. The ticks live in `picked` (run ids), so a re-sort keeps them.
+function tickTable(runs, cols, picked, changed) {
+  const box = { t: "Pick", get: r => picked.has(r.run) ? 0 : 1, show: r => {
+    const b = h("input", { type: "checkbox", "aria-label": `Pick the run of ${when(r.run)}, ${r.target_label}` });
+    b.checked = picked.has(r.run);
+    b.addEventListener("change", () => { b.checked ? picked.add(r.run) : picked.delete(r.run); changed(); });
+    return b; } };
+  return sortable([box, ...cols], runs, 1, -1, "runs");
+}
+// The bar under a runs table: one button that compares the ticked runs, and a way to clear them.
+function compareBar(picked, go, clear) {
+  const btn = h("button", { type: "button", class: "primary" }), say = h("span", { class: "small" }), off = h("button", { type: "button", class: "link", text: "Clear ticks" });
+  btn.addEventListener("click", go); off.addEventListener("click", clear);
+  const bar = h("div", { class: "cmpbar" }, btn, say, off);
+  const paint = () => { bar.classList.toggle("on", picked.size > 0); btn.textContent = picked.size > 1 ? `Compare ${picked.size} runs` : "Compare"; btn.disabled = picked.size < 2; say.textContent = picked.size < 2 ? "Tick two or more runs to compare them." : ""; off.hidden = !picked.size; };
+  paint();
+  return { el: bar, paint };
+}
+// Headline scores of any runs side by side, with cost and speed. Rows are scores; a score no run measured is left out.
+function sideBySide(rs) {
+  const ms = shown(rs, ORDER);
+  const head = ["", ...rs.map(r => h("span", {}, h("a", { href: runHref(r), text: when(r.run) }), h("small", { class: "sub", text: r.target_label }), h("small", { class: "sub", text: `${r.dataset.name} v${ver(r.dataset.version)}` })))];
+  const rows = [...ms.map(m => [term(m), ...rs.map(r => scoreCell(r, m))]),
+    ["Cost / answer", ...rs.map(r => perCost(r) == null ? na() : money(perCost(r)))], ["Seconds / answer", ...rs.map(r => secs(r.answer_s))],
+    ["Questions", ...rs.map(r => r.questions ?? "–")], ["Judge", ...rs.map(r => runWords(r))]];
+  return table("side", head, rows);
+}
+const UP = { overview: "", dataset: "../", run: "../../", compare: "../../" }[D.page];
 
-  // 1. the answer
-  const cor = cm.correctness, pc = pm.correctness, er = mean("error_rate");
-  const sentence = [];
-  if (cor && cor.mean != null) {
-    const how = !pc || pc.delta == null ? "." : pc.verdict === "real gain" || pc.verdict === "real drop" ? `, ${pc.verdict === "real gain" ? "a real gain" : "a real drop"} of ${sgn(pc.delta)} on the ${refWord}.` :
-      pc.verdict === "within noise" ? `, no real change (${sgn(pc.delta)} on the ${refWord}).` : `; too few questions to tell if it changed since the ${refWord}.`;
-    sentence.push(`${name("correctness")} (${G.correctness.plain}) is ${f2(cor.mean)}${cor.ci ? ` (95% CI ${f2(Math.max(0, cor.ci[0]))}–${f2(Math.min(1, cor.ci[1]))})` : ""}${how}`);
+// ---- the dashboard ---------------------------------------------------------------------------------
+// Each dataset with its systems ranked by their latest main score; then the recent runs of every dataset, to tick and compare.
+const RECENT = 15;   // runs shown before "Show all"
+function overview() {
+  add(h("h1", { text: "Nasute" }), h("p", { class: "lede", text: "Each dataset with its systems ranked by their latest main score. Scores run from 0 (bad) to 1 (perfect). Tick runs below to compare them." }));
+  if (!D.datasets.length) { add(h("p", { class: "empty", text: "No runs yet. Start one with: nasute run --profile smoke" })); finish(); return; }
+  add(h("h2", { text: "Datasets" }), h("div", { class: "cards" }, D.datasets.map(card)));
+
+  const picked = new Set(), panel = h("section", { class: "cmp", "aria-live": "polite" });
+  let all = false, tbl;
+  const cols = rs => [{ t: "Date", left: true, desc: true, get: r => r.run, show: r => dateCell(r, "all") }, { t: "Dataset", left: true, cls: "sm-hide", get: r => r.dataset.name, show: r => h("a", { href: `datasets/${datasetFile(r)}`, text: r.dataset.name }) },
+    { t: "System", left: true, cls: "sm-hide", get: r => r.target_label.toLowerCase(), show: r => r.target_label }, ...shown(rs).map(m => scoreCol(m, false, side(m, "correctness"), m === "correctness")), costCol("sm-hide"), speedCol("sm-hide")];
+  const host = h("div"), moreBtn = h("button", { type: "button", class: "link" });
+  const draw = () => {
+    const rs = all ? D.runs : D.runs.slice(0, RECENT);
+    tbl = tickTable(rs, cols(rs), picked, () => bar.paint());
+    host.replaceChildren(tbl);
+    moreBtn.textContent = all ? "Show fewer" : `Show all ${D.runs.length} runs`; moreBtn.hidden = D.runs.length <= RECENT;
+  };
+  moreBtn.addEventListener("click", () => { all = !all; draw(); });
+  const bar = compareBar(picked, () => {
+    const rs = D.runs.filter(r => picked.has(r.run)), one = likeForLike(rs);
+    panel.replaceChildren(h("h3", { text: `Comparing ${rs.length} runs` }),
+      one ? h("p", { class: "intro" }, "Same dataset. ", h("a", { href: `datasets/${datasetFile(rs[0])}#compare=${rs.map(r => r.run).join(",")}`, text: "See them question by question, with the paired test" }), ".")
+        : h("p", { class: "note", text: "These runs used different questions, so this is not a like-for-like test. Only the headline scores are shown side by side." }),
+      sideBySide(rs));
+    panel.scrollIntoView({ block: "start" });
+  }, () => { picked.clear(); panel.replaceChildren(); draw(); bar.paint(); });
+  add(h("h2", { text: "Recent runs" }), h("p", { class: "intro", text: "Newest first, across all datasets. Click a heading to sort." }), host, moreBtn, bar.el, panel);
+  draw();
+  for (const j of D.judges) {
+    const jc = j.check, ms = jc ? SCORES.filter(m => jc.metrics[m]) : [];
+    add(h("p", { class: "small" }, `Judge: ${j.model}, ${j.mode} mode. `, jc ? `Checked ${when(jc.run.replace("judge-", ""))} on ${jc.dataset.name} v${ver(jc.dataset.version)}: ` + ms.map(m => `${name(m)} ${(jc.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + ". " : "Not checked yet. "));
   }
-  if (er != null && er > WARN_ERR) sentence.push(`${name("error_rate")} is high: ${failedWords(er)}.`);
-  if (sentence.length) add(h("p", { class: "summary", text: sentence.join(" ") }));
-  add(h("div", { class: "hero-row" }, ["correctness", "faithfulness", "error_rate"].filter(m => mean(m) != null).map(m => h("div", { class: "hero-item" }, h("span", { class: "hi-name" }, term(m)), plainLine(m),
-    h("b", { class: "num " + warnClass(m, mean(m)), text: f2(mean(m)) }), h("span", { class: "hi-ci " + warnClass(m, mean(m)), text: m === "error_rate" && mean(m) > WARN_ERR ? failedWords(mean(m)) : spread(cm[m]) }), h("span", { class: "hi-change" }, change(m) || (c && c.warning ? "not compared" : null))))));
-  add(h("p", { class: "small dateline" }, `Latest run ${when(latest.run)}. ${runLabel(latest)}${lr.label ? `, “${lr.label}”` : ""}${lr.baseline ? ", the baseline" : ""}. ${plural(runs.length, "run")} so far. Questions: ${latest.dataset.name} v${ver(latest.dataset.version)}. ${latest.counts_line}${latest.attempts > latest.questions ? ` (${latest.questions} questions, each asked ${latest.repeats} times)` : ""}. `,
-    latest.aborted ? note(`Stopped early: ${latest.aborted}. ${plain("aborted")}`) : null, latest.incomplete ? note(`Incomplete: ${(latest.judge_error_rate * 100).toFixed(0)}% of answers could not be judged. ${plain("incomplete")}`) : null,
-    h("a", { href: `runs/${latest.run}.html`, text: "Every question of this run" }), D.compare_href ? [". ", h("a", { href: D.compare_href, text: "Questions that changed" })] : null, ". ", h("a", { href: "runs.csv", download: "", text: "Download all runs (CSV)" }), "."));
+  finish();
+}
+const datasetFile = r => (D.datasets.find(d => d.name === r.dataset.name) || {}).href.replace(/^datasets\//, "");
 
-  // 1b. every run on a timeline, one chart per score (the question-by-question charts are on each run's page)
-  const profiles = [...new Set(runs.map(r => r.profile || ""))];
-  let pick, profile = profiles.includes("deep") ? "deep" : profiles.includes("smoke") ? "smoke" : profiles[0];
+// One dataset on the dashboard: its systems' latest runs, best first, with cost and speed where known.
+const TOP = 6;
+function card(d) {
+  const main = mainOf(d.latest), rs = [...d.latest].sort((a, b) => ((b.metrics[main] || {}).mean ?? -1) - ((a.metrics[main] || {}).mean ?? -1));
+  const newest = d.latest.map(r => r.run).sort().pop();
+  return h("article", { class: "card" }, h("h3", {}, h("a", { href: d.href, text: d.name })),
+    h("p", { class: "small", text: `${plural(d.runs, "run")} on ${plural(d.latest.length, "system")}. Last run ${when(newest)}.${main ? ` Ranked by ${name(main, null).toLowerCase()}, latest run of each.` : ""}` }),
+    h("ol", { class: "rank" }, rs.slice(0, TOP).map(r => h("li", {}, h("a", { class: "who", href: runHref(r), text: r.target_label }), main ? scoreCell(r, main, true) : na(),
+      h("span", { class: "meta", text: [perCost(r) != null ? money(perCost(r)) + " / answer" : null, r.answer_s != null ? secs(r.answer_s) + " / answer" : null].filter(Boolean).join(" · ") })))),
+    rs.length > TOP ? h("p", { class: "small" }, h("a", { href: d.href, text: `and ${rs.length - TOP} more` })) : null);
+}
+
+// ---- one dataset -----------------------------------------------------------------------------------
+// Its systems ranked, every run on it (tick any to compare them question by question), then the over-time charts.
+function dataset() {
+  const runs = [...D.runs].reverse(), latest = D.systems.map(s => runs.find(r => r.target === s.target)).filter(Boolean), main = mainOf(latest);
+  const versions = [...new Set(D.runs.map(r => ver(r.dataset.version)))];
+  add(crumbs([null, D.name]), h("h1", { text: D.name }),
+    h("p", { class: "lede", text: `${plural(runs.length, "run")} on ${plural(D.systems.length, "system")}. Questions: v${versions.join(", v")}${runs[0].questions != null ? `, ${runs[0].questions} in the latest run` : ""}.` }));
+
+  add(h("h2", { text: "Latest by system" }), h("p", { class: "intro", text: main ? `Each system's latest run, best ${name(main, D.k).toLowerCase()} first.` : "Each system's latest run." }),
+    sortable([{ t: "System", left: true, get: r => r.target_label.toLowerCase(), show: r => [h("a", { href: runHref(r), text: r.target_label }), h("small", { class: "sub", text: when(r.run) })] },
+      ...shown(latest).map(m => scoreCol(m, m === main, side(m, main), false)), costCol("sm-hide"), speedCol("sm-hide"),
+      { t: "Runs", cls: "sm-hide", desc: true, get: r => runs.filter(x => x.target === r.target).length, show: r => String(runs.filter(x => x.target === r.target).length) }], latest, main ? 1 : 0, -1));
+
+  const picked = new Set(), panel = h("section", { class: "cmp", "aria-live": "polite" }), host = h("div");
+  const cols = [{ t: "Date", left: true, desc: true, get: r => r.run, show: r => dateCell(r) }, { t: "System", left: true, cls: "sm-hide", get: r => r.target_label.toLowerCase(), show: r => [r.target_label, h("small", { class: "sub", text: `v${ver(r.dataset.version)}, ${runWords(r)}` })] },
+    ...shown(runs).map(m => scoreCol(m, false, side(m, main), m === main)), costCol("sm-hide"), speedCol("sm-hide")];
+  const draw = () => host.replaceChildren(tickTable(runs, cols, picked, () => bar.paint()));
+  const go = () => { compareRuns(panel, runs.filter(r => picked.has(r.run)).reverse()); panel.scrollIntoView({ block: "start" }); };
+  const bar = compareBar(picked, go, () => { picked.clear(); panel.replaceChildren(); draw(); bar.paint(); });
+  add(h("h2", { id: "runs", text: "Runs" }), h("p", { class: "intro", text: "Newest first. Tap a date to open the run; tick two or more to compare them question by question." }), host, bar.el, panel);
+  draw();
+  const m = location.hash.match(/^#compare=([\w,]+)$/);
+  if (m) { m[1].split(",").forEach(id => runs.some(r => r.run === id) && picked.add(id)); draw(); bar.paint(); if (picked.size > 1) requestAnimationFrame(go); }
+
+  overTime(runs);
+  add(h("h2", { class: "quiet", text: "Details" }),
+    D.mislabels.length ? more(`${plural(D.mislabels.length, "question")} may be mislabelled`, h("ul", { class: "plain" }, D.mislabels.map(x => h("li", {}, h("b", { text: x.id }), ` labelled ${x.label}, but answered well ${x.passed} of ${x.attempts} times`)))) : null,
+    h("p", { class: "small" }, "Download every run of a system (CSV): ", D.systems.map((s, i) => [i ? " · " : "", h("a", { href: `../${s.folder}/runs.csv`, download: "", text: s.target_label })]), "."));
+  finish();
+}
+
+// Runs of this dataset compared: headline scores side by side, the paired test for two runs of the same questions, then question by question.
+function compareRuns(panel, rs) {
+  const sameFile = likeForLike(rs, true), pair = rs.length === 2 && D.paired[`${rs[0].run} ${rs[1].run}`];
+  panel.replaceChildren(h("h3", { text: `Comparing ${rs.length} runs` }), sideBySide(rs));
+  if (!sameFile) panel.append(h("p", { class: "note", text: "These runs used different versions of the questions. Shared questions are lined up by id, but the scores are not a like-for-like test." }));
+  if (pair && !pair.warning) {
+    const ms = ORDER.filter(m => pair.metrics[m]);
+    panel.append(h("h3", { text: "Real change or noise?" }), caption(`Paired on the ${plural(pair.shared, "question")} both runs answered, older run first. A real change needs ${pair.min_pairs} or more.`),
+      table("narrow", ["Measure", "Before", "After", "Change", ["95% CI of change ", qmark("ci")], ["Verdict ", qmark("paired")]], ms.map(m => { const p = pair.metrics[m];
+        return [term(m), f2(p.a), f2(p.b), sgn(p.delta), p.ci ? h("span", { class: "ci", text: `${sgn(p.ci[0])} to ${sgn(p.ci[1])}` }) : "–", verdict(p.verdict)]; })));
+    if (pair.notes.length) panel.append(h("ul", { class: "plain small" }, pair.notes.map(t => h("li", { text: t }))));
+  } else if (pair && pair.warning) panel.append(h("p", { class: "note", text: pair.warning }));
+  else if (rs.length === 2 && sameFile) panel.append(h("p", { class: "small", text: `No paired test here for these two. Run: nasute compare ${rs[0].run} ${rs[1].run}` }));
+  panel.append(questionGrid(rs));
+}
+
+// Question by question: one row per question, one column per run, each cell a mark and a word (never colour alone).
+function questionGrid(rs) {
+  const ids = [...new Set([...Object.keys(D.questions), ...rs.flatMap(r => Object.keys(D.grid[r.run] || {}))])].filter(i => rs.some(r => (D.grid[r.run] || {})[i]));
+  const cell = (r, i) => { const g = (D.grid[r.run] || {})[i]; return g ? outcome(g[0], g[1], g[2], g[3], r.judge_mode, D.pass_at) : null; };
+  const differs = i => new Set(rs.map(r => (cell(r, i) || { word: "not asked" }).word)).size > 1;
+  const only = h("input", { type: "checkbox", id: "only-diff" }); only.checked = true;
+  const host = h("div");
+  const draw = () => {
+    const list = only.checked ? ids.filter(differs) : ids;
+    host.replaceChildren(list.length ? table("grid", ["Question", ...rs.map(r => h("span", {}, when(r.run), h("small", { class: "sub", text: r.target_label })))],
+      list.map(i => [h("span", {}, h("span", { class: "qtext", text: shorten(D.questions[i] || i, 90) }), h("span", { class: "qid", text: i })), ...rs.map(r => { const o = cell(r, i); return o ? mark(o) : h("span", { class: "na", text: "not asked" }); })]))
+      : h("p", { class: "muted", text: "Every question had the same outcome in each run." }));
+  };
+  only.addEventListener("change", draw); draw();
+  return h("div", {}, h("h3", { text: "Question by question" }),
+    h("p", { class: "small", text: "✓ right (or, for a question with no answer, declined) · ½ partly right · ✗ wrong (or made something up) · E system error. Mean over repeats." }),
+    h("p", { class: "bar" }, only, h("label", { for: "only-diff", text: " Only questions where the runs differ" })), host);
+}
+
+const mark = o => h("span", { class: "out " + o.cls }, h("b", { "aria-hidden": "true", text: o.mark }), " ", o.word);
+
+// Every run on a timeline, one chart per score, for one system at a time. Left out with fewer than two runs: one dot is not a trend.
+function overTime(runs) {
+  const old = [...runs].reverse(), twoPlus = rs => rs.length >= 2;
+  const sys = D.systems.filter(s => twoPlus(old.filter(r => r.target === s.target)));
+  if (!sys.length) return;
+  const want = (location.hash.match(/^#system=(.+)$/) || [])[1];
+  let target = sys.some(s => s.target === want) ? want : sys[0].target, pick, profile;
+  const pickSys = sys.length > 1 ? h("select", { "aria-label": "System" }, sys.map(s => h("option", { value: s.target, text: s.target_label }))) : null;
+  if (pickSys) { pickSys.value = target; pickSys.addEventListener("change", () => { target = pickSys.value; profile = null; drawCharts(); }); }
   const tabs = h("div", { class: "tabs", role: "group", "aria-label": "Profile" }), box = h("div", { class: "figures" });
   const drawCharts = () => {
     charts.forEach(u => u.destroy()); charts = [];
     box.replaceChildren();
-    const rs = runs.filter(r => (r.profile || "") === profile);
-    tabs.replaceChildren(h("span", { class: "small", text: "Profile: " }), ...profiles.map(p => { const b = h("button", { type: "button", class: p === profile ? "on" : "", "aria-pressed": p === profile ? "true" : "false", text: p || "no profile" }); b.addEventListener("click", () => { profile = p; drawCharts(); }); return b; }));
-    const ms = ["correctness", ...SCORES.filter(k => k !== "correctness")].filter(k => rs.some(r => r.metrics[k] && r.metrics[k].mean != null));
+    const mine = old.filter(r => r.target === target), profiles = [...new Set(mine.map(r => r.profile || ""))].filter(p => twoPlus(mine.filter(r => (r.profile || "") === p)));
+    if (!profiles.includes(profile)) profile = profiles.includes("deep") ? "deep" : profiles.includes("smoke") ? "smoke" : profiles[0];
+    tabs.replaceChildren(...(profiles.length > 1 ? [h("span", { class: "small", text: "Profile: " }), ...profiles.map(p => { const b = h("button", { type: "button", class: p === profile ? "on" : "", "aria-pressed": p === profile ? "true" : "false", text: p || "no profile" }); b.addEventListener("click", () => { profile = p; drawCharts(); }); return b; })] : []));
+    if (profile == null) { box.append(h("p", { class: "muted", text: "Fewer than two runs with the same profile: nothing to draw yet." })); return; }
+    const rs = mine.filter(r => (r.profile || "") === profile);
+    const ms = ORDER.filter(k => enough(rs, k));
     if (!ms.includes(pick)) pick = ms[0];
     if (phone.matches) box.append(h("div", { class: "tabs chips", role: "group", "aria-label": "Score" }, ms.map(m => { const b = h("button", { type: "button", class: m === pick ? "on" : "", "aria-pressed": m === pick ? "true" : "false", text: name(m) }); b.addEventListener("click", () => { pick = m; drawCharts(); }); return b; })));
     (phone.matches ? [pick] : ms).forEach((m, i) => {   // a phone gets one chart and a picker; a wide screen gets the main chart large, then the rest small
-      const host = h("figure", { class: !phone.matches && m === "correctness" ? "lead" : "" });
+      const host = h("figure", { class: !phone.matches && i === 0 ? "lead" : "" });
       if (!phone.matches && i === 1) box.append(h("h3", { class: "span", text: "Other scores" }));
       box.append(host);
-      drawChart(host, m, rs.map(r => ({ ...r, metrics: { ...r.metrics, [m]: r.metrics[m] || { mean: null, ci: null } } })), r => `runs/${r.run}.html`, !phone.matches && m === "correctness");
+      const kept = rs.filter(r => r.metrics[m] && r.metrics[m].mean != null);
+      drawChart(host, m, kept, runHref, !phone.matches && i === 0);
     });
   };
-  add(h("h2", { text: "Over time" }), h("p", { class: "intro", text: "Drag across a chart to zoom; double-click resets." }), tabs, box);
+  add(h("h2", { id: "over-time", text: "Over time" }), h("p", { class: "intro", text: "One system at a time. Drag across a chart to zoom; double-click resets." }), pickSys ? h("div", { class: "bar" }, pickSys) : null, tabs, box);
   drawCharts();
+  if (want) requestAnimationFrame(() => document.getElementById("over-time").scrollIntoView());
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawCharts);
   phone.addEventListener("change", drawCharts);
-  // 1c. every run, newest first, sortable; each row opens the run page
-  add(h("h2", { id: "runs", text: "Runs" }), sortable([
-    { t: "Run", left: true, desc: true, get: r => r.run, show: r => [h("a", { href: `runs/${r.run}.html`, text: when(r.run) }), r.label ? ` “${r.label}”` : "", r.baseline ? h("small", { class: "sub", text: "baseline" }) : null,
-      r.aborted ? note(`${when(r.run)}: stopped early, ${r.aborted}.`) : null, r.incomplete ? note(`${when(r.run)}: incomplete, too many answers could not be judged.`) : null] },
-    { t: "Profile", left: true, get: r => r.profile || "", show: r => `${r.profile || "no profile"}, ${r.judge_mode || "quick"}${r.repeats > 1 ? ", ×" + r.repeats : ""}` },
-    { t: "Questions", get: r => r.questions, show: r => r.questions == null ? "–" : r.questions },
-    metricCol("correctness", r => r.metrics, K, true), metricCol("faithfulness", r => r.metrics, K, true), metricCol("error_rate", r => r.metrics, K)], runs, 0, -1));
-
-  // 2. what explains it: scores by group, then failures
-  const vsHead = h("span", {}, `vs ${refWord}${c ? `, ${day(c.a)}` : ""}`, c && c.warning ? note(c.warning) : null, c ? c.notes.map(note) : null, " ", qmark("paired"));
-  if (c && (c.errors.newly.length || c.errors.recovered.length)) vsHead.append(note((c.errors.newly.length ? `Newly failing: ${c.errors.newly.join(", ")}. ` : "") + (c.errors.recovered.length ? `Recovered: ${c.errors.recovered.join(", ")}.` : "")));
-  const vs = m => {
-    const p = pm[m];
-    if (!p || p.delta == null) return h("span", { class: "flat", text: c && c.warning ? "not compared" : "–" });
-    return h("span", {}, sgn(p.delta), " ", verdict(p.verdict), p.ci ? h("small", { class: "ci", text: ` (${sgn(p.ci[0])} to ${sgn(p.ci[1])})` }) : null);
-  };
-  const rows = [];
-  for (const [group, keys] of GROUPS) {
-    const have = keys.filter(m => mean(m) != null);
-    if (!have.length) continue;
-    rows.push({ group });
-    for (const m of have) {
-      const s = cm[m], a = latest.metrics_answered && latest.metrics_answered[m];
-      rows.push([[term(m), plainLine(m)], [h("span", { class: warnClass(m, s.mean), text: f2(s.mean) }), a && a.mean != null && latest.counts.system_errors && Math.abs(a.mean - s.mean) >= 0.005 ? note(`${name(m)}: counting only answers the system gave, the score is ${f2(a.mean)}.`) : null],
-        h("span", { class: "ci" }, lbl("95% CI "), spread(s) || "–"), h("span", {}, lbl(`vs ${refWord} `), vs(m))]);
-    }
-  }
-  add(h("h2", { text: "Scores" }), caption("A system error counts as 0."), table("narrow scores", ["Measure", "Score", ["95% CI ", qmark("ci")], vsHead], rows));
-  const tail = [];
-  const pw = latest.power && (latest.power.correctness || Object.values(latest.power).find(Boolean));
-  if (latest.power && !pw && Object.keys(latest.power).length) tail.push("Cannot estimate how many questions are needed: the scores have no spread.");
-  if (pw) tail.push(`To see a ${c ? c.detect : 0.05} change in a score with 80% chance, about ${plural(pw.needed, "question")} are needed (${pw.basis === "repeats" ? "from how much one question wobbles between repeats" : "a rule of thumb, from the spread of the scores"}).`);
-  if (c && !c.warning) tail.push(`A real change needs ${c.min_pairs} or more shared questions; this comparison has ${c.shared}.`);
-  if (tail.length) add(h("p", { class: "small", text: tail.join(" ") }));
-
-
-  const cs = latest.causes;
-  if (cs && cs.questions.length) add(h("h2", { text: "Why questions failed" }), h("p", { class: "intro", text: Object.entries(cs.counts).filter(e => e[1]).map(e => `${e[0]}: ${e[1]}`).join(", ") + ". Retrieval: the right page was not found. Generation: found, answered wrong. Judge?: the marking looks odd. System: it errored." }),
-    h("ul", { class: "plain" }, cs.questions.map(q => h("li", {}, h("b", { text: q.id }), " ", h("em", { text: q.cause }), ". ", h("span", { class: "muted", text: q.why })))));
-  const k = latest.consistency;
-  if (k) add(h("h2", { text: "Same answer every time?" }), h("p", {}, h("b", { text: (k.pass_all * 100).toFixed(0) + "%" }), ` of ${k.questions} questions were answered well on every repeat${k.left_out ? ` (${k.left_out} left out: a repeat was not scored)` : ""}. `, h("span", { class: "muted", text: G.pass_all.formula })),
-    k.flaky.length ? h("ul", { class: "plain" }, k.flaky.map(x => h("li", {}, h("b", { text: x.id }), ` ${name("correctness")} between ${Math.min(...x.scores).toFixed(2)} and ${Math.max(...x.scores).toFixed(2)} (${x.scores.join(", ")})`))) : h("p", { class: "muted", text: "No flaky questions." }));
-  if (latest.failures.length) add(h("h2", { text: "Problems in the latest run" }), h("ul", { class: "plain" }, latest.failures.map(x => h("li", {}, h("b", { text: x.id }), " ", h("span", { class: "muted", text: x.error })))));
-
-  // 3. details, folded away
-  const jc = D.judge_check;
-  if (jc) add(h("h2", { text: "Judge reliability" }), markerCheck(jc, D.judge_checked_since));
-  add(h("h2", { class: "quiet", text: "Details" }),
-    more("By topic and difficulty", groupTable(latest.tags, "Topic"), h("div", { class: "gap" }), groupTable(latest.difficulty || {}, "Difficulty")),
-    D.mislabels.length ? more(`${plural(D.mislabels.length, "question")} may be mislabelled`, h("ul", { class: "plain" }, D.mislabels.map(x => h("li", {}, h("b", { text: x.id }), ` labelled ${x.label}, but answered well ${x.passed} of ${x.attempts} times`)))) : null,
-    h("p", { class: "small", text: `System: ${S.target_label || S.target}, model ${lr.answering_model}. Judge: ${lr.judge_model}.` }),
-    jc ? null : h("p", { class: "small", text: "No judge check yet for this marker and mode. Run: nasute judge-check" }));
-  finish();
 }
-
-// ---- one run -------------------------------------------------------------------------------------
-const DIFF = { easy: 0, medium: 1, hard: 2 };
 
 function claimsBlock(d) {
   if (!d) return null;
@@ -605,8 +670,68 @@ function repeatBlock(r, many) {
     h("p", { class: "small", text: `Answer took ${r.total_s ?? "–"} s${r.first_text_s != null ? ` (first text after ${r.first_text_s} s)` : ""}${r.judge_s != null ? `, judging ${r.judge_s} s` : ""}.${useLine(r.tokens_in, r.tokens_out, r.cost, r.judge_tokens, r.judge_cost) ? " " + useLine(r.tokens_in, r.tokens_out, r.cost, r.judge_tokens, r.judge_cost) + "." : ""}` }));
 }
 
+// ---- one run -------------------------------------------------------------------------------------
+// Where the numbers are. First the answer (a sentence and the headline scores), then every question, then the charts, then the rest.
+const GROUPS = [["Answers", ["correctness", "faithfulness", "relevancy", "abstention"]], ["Finding sources", ["hit", "recall", "mrr", "context_recall"]], ["Reliability", ["error_rate"]]];
+const more = (summary, ...kids) => h("details", { class: "more" }, h("summary", { text: summary }), kids);
+const DIFF = { easy: 0, medium: 1, hard: 2 };
+
+// The headline: one sentence on the main score, then a tile per measured headline score (with its change on the reference run), cost and speed.
+function headline(S, c) {
+  const cm = S.metrics, mean = m => cm[m] && cm[m].mean, pm = c && !c.warning ? c.metrics : {}, refWord = D.vs_baseline ? "baseline" : "run before";
+  const change = m => { const p = pm[m]; return !p || p.delta == null ? null : h("span", {}, sgn(p.delta), " ", verdict(p.verdict)); };
+  const sentence = [], cor = cm.correctness, pc = pm.correctness, er = mean("error_rate");
+  if (cor && cor.mean != null) {
+    const how = !pc || pc.delta == null ? "." : pc.verdict === "real gain" || pc.verdict === "real drop" ? `, ${pc.verdict === "real gain" ? "a real gain" : "a real drop"} of ${sgn(pc.delta)} on the ${refWord}.` :
+      pc.verdict === "within noise" ? `, no real change (${sgn(pc.delta)} on the ${refWord}).` : `; too few questions to tell if it changed since the ${refWord}.`;
+    sentence.push(`${name("correctness")} (${G.correctness.plain}) is ${f2(cor.mean)}${cor.ci ? ` (95% CI ${f2(Math.max(0, cor.ci[0]))}–${f2(Math.min(1, cor.ci[1]))})` : ""}${how}`);
+  }
+  if (er != null && er > WARN_ERR) sentence.push(`${name("error_rate")} is high: ${failedWords(er)}.`);
+  const u = S.usage || {}, pa = u.per_answer || {}, secsPer = answerSeconds(D.rows);
+  const tile = (label, num, sub, cls = "", chg = null) => h("div", { class: "hero-item" }, h("span", { class: "hi-name" }, label), h("b", { class: "num " + cls, text: num }), h("span", { class: "hi-ci " + cls, text: sub }), h("span", { class: "hi-change" }, chg));
+  return [sentence.length ? h("p", { class: "summary", text: sentence.join(" ") }) : null,
+    h("div", { class: "hero-row" }, HEAD.filter(m => mean(m) != null).map(m => tile(term(m), f2(mean(m)), m === "error_rate" && mean(m) > WARN_ERR ? failedWords(mean(m)) : spread(cm[m]), warnClass(m, mean(m)), change(m) || (c && c.warning ? "not compared" : null))),
+      pa.cost != null ? tile("Cost / answer", money(pa.cost), u.cost != null ? `${money(u.cost)} in all` : "") : null,
+      secsPer != null ? tile("Seconds / answer", secs(secsPer), "the system's time, not the judge's") : null)];
+}
+const answerSeconds = rows => { const t = rows.map(r => r.total_s).filter(x => typeof x === "number"); return t.length ? t.reduce((a, b) => a + b, 0) / t.length : null; };
+
+// What explains the headline: every measured score with its change, why questions failed, repeats, problems, the judge.
+function runStats(S, c) {
+  const cm = S.metrics, mean = m => cm[m] && cm[m].mean, pm = c && !c.warning ? c.metrics : {}, refWord = D.vs_baseline ? "baseline" : "run before";
+  const vsHead = h("span", {}, `vs ${refWord}${c ? `, ${day(c.a)}` : ""}`, c && c.warning ? note(c.warning) : null, c ? c.notes.map(note) : null, " ", qmark("paired"));
+  if (c && (c.errors.newly.length || c.errors.recovered.length)) vsHead.append(note((c.errors.newly.length ? `Newly failing: ${c.errors.newly.join(", ")}. ` : "") + (c.errors.recovered.length ? `Recovered: ${c.errors.recovered.join(", ")}.` : "")));
+  const vs = m => { const p = pm[m]; return !p || p.delta == null ? h("span", { class: "flat", text: c && c.warning ? "not compared" : "–" }) : h("span", {}, sgn(p.delta), " ", verdict(p.verdict), p.ci ? h("small", { class: "ci", text: ` (${sgn(p.ci[0])} to ${sgn(p.ci[1])})` }) : null); };
+  const rows = [];
+  for (const [group, keys] of GROUPS) {
+    const have = keys.filter(m => mean(m) != null);
+    if (!have.length) continue;
+    rows.push({ group });
+    for (const m of have) {
+      const s = cm[m], a = S.metrics_answered && S.metrics_answered[m];
+      rows.push([[term(m), plainLine(m)], [h("span", { class: warnClass(m, s.mean), text: f2(s.mean) }), a && a.mean != null && S.counts.system_errors && Math.abs(a.mean - s.mean) >= 0.005 ? note(`${name(m)}: counting only answers the system gave, the score is ${f2(a.mean)}.`) : null],
+        h("span", { class: "ci" }, lbl("95% CI "), spread(s) || "–"), h("span", {}, lbl(`vs ${refWord} `), vs(m))]);
+    }
+  }
+  const out = [h("h2", { text: "Scores" }), caption("A system error counts as 0. Scores this run did not measure are left out."), table("narrow scores", ["Measure", "Score", ["95% CI ", qmark("ci")], vsHead], rows)];
+  const tail = [], pw = S.power && (S.power.correctness || Object.values(S.power).find(Boolean));
+  if (S.power && !pw && Object.keys(S.power).length) tail.push("Cannot estimate how many questions are needed: the scores have no spread.");
+  if (pw) tail.push(`To see a ${c ? c.detect : 0.05} change in a score with 80% chance, about ${plural(pw.needed, "question")} are needed (${pw.basis === "repeats" ? "from how much one question wobbles between repeats" : "a rule of thumb, from the spread of the scores"}).`);
+  if (c && !c.warning) tail.push(`A real change needs ${c.min_pairs} or more shared questions; this comparison has ${c.shared}.`);
+  if (tail.length) out.push(h("p", { class: "small", text: tail.join(" ") }));
+  const cs = S.causes;
+  if (cs && cs.questions.length) out.push(h("h2", { text: "Why questions failed" }), h("p", { class: "intro", text: Object.entries(cs.counts).filter(e => e[1]).map(e => `${e[0]}: ${e[1]}`).join(", ") + ". Retrieval: the right page was not found. Generation: found, answered wrong. Judge?: the marking looks odd. System: it errored." }),
+    h("ul", { class: "plain" }, cs.questions.map(q => h("li", {}, h("b", { text: q.id }), " ", h("em", { text: q.cause }), ". ", h("span", { class: "muted", text: q.why })))));
+  const k = S.consistency;
+  if (k) out.push(h("h2", { text: "Same answer every time?" }), h("p", {}, h("b", { text: (k.pass_all * 100).toFixed(0) + "%" }), ` of ${k.questions} questions were answered well on every repeat${k.left_out ? ` (${k.left_out} left out: a repeat was not scored)` : ""}. `, h("span", { class: "muted", text: G.pass_all.formula })),
+    k.flaky.length ? h("ul", { class: "plain" }, k.flaky.map(x => h("li", {}, h("b", { text: x.id }), ` ${name("correctness")} between ${Math.min(...x.scores).toFixed(2)} and ${Math.max(...x.scores).toFixed(2)} (${x.scores.join(", ")})`))) : h("p", { class: "muted", text: "No flaky questions." }));
+  if (S.failures && S.failures.length) out.push(h("h2", { text: "System errors" }), h("ul", { class: "plain" }, S.failures.map(x => h("li", {}, h("b", { text: x.id }), " ", h("span", { class: "muted", text: x.error })))));
+  if (D.judge_check) out.push(h("h2", { text: "Judge reliability" }), markerCheck(D.judge_check, D.judge_checked_since));
+  return out;
+}
+
 // Tokens and cost, where the system or the judge reported them (Nasute records them; it never needs them).
-const money = c => c == null ? null : c < 0.01 ? `US$${c.toFixed(4)}` : `US$${c.toFixed(2)}`;
+const money = c => c == null ? null : c > 0 && c < 0.0001 ? "under US$0.0001" : c < 0.01 ? `US$${c.toFixed(4)}` : `US$${c.toFixed(2)}`;
 function useLine(tin, tout, cost, jtok, jcost) {
   const parts = [];
   if (tin != null || tout != null) parts.push(`${tin ?? "?"} tokens in, ${tout ?? "?"} out`);
@@ -615,57 +740,62 @@ function useLine(tin, tout, cost, jtok, jcost) {
   return parts.join("; ");
 }
 
-// One entry per question from its rows (one row per repeat). `n` is its place in the results file, which is the dataset's order (shortcut: results are written in dataset order; the id stays the real key, runs are paired by it): its tags, difficulty and the mean of each score over the repeats.
-function questions(rows, cause, worse = new Set()) {
+// One entry per question from its rows (one row per repeat). `n` is its place in the results file, which is the dataset's order (shortcut: results are written in dataset order; the id stays the real key, runs are paired by it): its tags, difficulty, the mean of each score over the repeats and its outcome.
+function questions(rows, cause, worse = new Set(), mode, P = 0.75) {
   const by = new Map();
   for (const r of rows) { if (!by.has(r.id)) by.set(r.id, []); by.get(r.id).push(r); }
   return [...by].map(([id, reps], i) => {
     const means = {};
     for (const m of SCORES) { const v = reps.map(r => r.scores[m]).filter(x => x != null); means[m] = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }
-    return { id, n: i + 1, reps, tags: reps[0].tags, difficulty: reps[0].difficulty, means, cause: cause.get(id) || "", worse: worse.has(id) };
+    const un = reps[0].answerable === false;
+    return { id, n: i + 1, reps, tags: reps[0].tags, difficulty: reps[0].difficulty, means, cause: cause.get(id) || "", worse: worse.has(id),
+      out: outcome(un ? means.abstention : means.correctness, un, reps.filter(r => r.error).length, reps.length, mode, P) };
   });
 }
+const OUT_RANK = { bad: 0, part: 1, na: 2, good: 3 };
 
 function run() {
   const S = D.summary, P = S.pass_at, cause = new Map(S.causes.questions.map(q => [q.id, q.cause])), worse = new Set(D.worse);
-  const qs = questions(D.rows, cause, worse);
+  const qs = questions(D.rows, cause, worse, S.judge_mode, P);
   const cols = SCORES.filter(m => qs.some(q => q.means[m] != null));
   const open = id => { location.hash = "q-" + encodeURIComponent(id); };   // the question view is the same page, shown for #q-<id>
   const list = h("div"), detail = h("div", { hidden: true });
   add(list, detail);
   const put = (...x) => list.append(...x.flat(Infinity).filter(c => c != null && c !== false));   // like add(), into the table view
-  put(crumbs(["../index.html", suiteName(D.suite)], [null, "Run"]), h("h1", { text: `Run ${when(S.run)}` }),
-    h("p", { class: "dateline" }, `${runLabel(S)}${D.label ? `, “${D.label}”` : ""}${D.baseline ? ", the baseline" : ""}. Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). ${S.counts_line}. `,
+  const home = [D.dataset_href, D.suite.dataset];
+  put(crumbs(home, [null, when(S.run)]), h("h1", { text: D.suite.target_label || D.suite.target }),
+    h("p", { class: "dateline" }, `Run of ${when(S.run)} on ${S.dataset.name} v${ver(S.dataset.version)}. ${runLabel(S)}${D.label ? `, “${D.label}”` : ""}${D.baseline ? ", the baseline" : ""}. ${S.counts_line}. `,
       S.aborted ? note(`Stopped early: ${S.aborted}. ${plain("aborted")}`) : null, S.incomplete ? note(`Incomplete: too many judge errors. ${plain("incomplete")}`) : null,
-      D.compare_href ? [h("a", { href: "../" + D.compare_href, text: "What changed since the run before" }), ". "] : null),
-    D.judge_check ? h("p", { class: "small", text: `Marker check (${D.judge_check.dataset.name} v${ver(D.judge_check.dataset.version)}, ${plural(D.judge_check.items, "item")}, ${when(D.judge_check.run.replace("judge-", ""))}): ` +
-      SCORES.filter(m => D.judge_check.metrics[m]).map(m => `${name(m)} ${(D.judge_check.metrics[m].accuracy * 100).toFixed(0)}% accurate`).join(", ") + `.${D.judge_checked_since ? " This check is newer than the run." : ""}${D.judge_check.aborted ? " That check was stopped early." : ""}` }) : null,
-    h("p", { class: "small" }, "Download: ", h("a", { href: `${S.run}.csv`, download: "", text: "CSV" }), " · ", h("a", { href: `${S.run}.results.jsonl`, download: "", text: "JSON lines" }), " · ", h("a", { href: `${S.run}.summary.json`, download: "", text: "summary" }), "."),
-    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Marker: ${S.judge_model} (${S.judge_mode}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }));
-
+      D.compare_href ? [h("a", { href: D.compare_href, text: "What changed since the run before" }), ". "] : null),
+    headline(S, D.compare));
 
   const state = { view: "all", cause: "", tag: "", text: "", sort: "n", dir: 1, page: 1 };
-  const sels = {};
-  const select = (label, key, options) => { const s = h("select", { "aria-label": label }, options.map(([v, t]) => h("option", { value: v, text: t }))); s.addEventListener("change", () => { state[key] = s.value; state.page = 1; render(); }); sels[key] = s; return s; };
+  const select = (label, key, options) => { const s = h("select", { "aria-label": label }, options.map(([v, t]) => h("option", { value: v, text: t }))); s.addEventListener("change", () => { state[key] = s.value; state.page = 1; render(); }); return s; };
   const search = h("input", { type: "search", placeholder: "Search id, question, answer", "aria-label": "Search" });
   search.addEventListener("input", () => { state.text = search.value.toLowerCase(); state.page = 1; render(); });
   const causes = [...new Set(qs.map(q => q.cause).filter(Boolean))], tags = [...new Set(qs.flatMap(q => q.tags))].sort();
   const count = h("span", { class: "small" }), tbody = h("tbody"), head = h("tr"), pagers = [h("div", { class: "pager" }), h("div", { class: "pager" })];
-  const matches = q => (state.view === "all" || (state.view === "failed" ? q.cause : q.worse)) && (!state.cause || q.cause === state.cause) && (!state.tag || q.tags.includes(state.tag)) &&
+  const VIEWS = { all: () => true, bad: q => q.out.cls !== "good", good: q => q.out.cls === "good", failed: q => q.cause, worse: q => q.worse };
+  const matches = q => VIEWS[state.view](q) && (!state.cause || q.cause === state.cause) && (!state.tag || q.tags.includes(state.tag)) &&
     (!state.text || [q.id, ...q.tags, ...q.reps.flatMap(r => [r.question, r.answer])].some(t => t.toLowerCase().includes(state.text)));
-  const heads = [["n", "#"], ["question", "Question"], ["tags", "Topics"], ["difficulty", "Difficulty"], ...cols.map(m => [m, name(m)]), ["cause", "Cause"]];
-  const key = (q, k) => k === "n" ? q.n : k === "question" ? q.reps[0].question.toLowerCase() : k === "tags" ? q.tags.join(" ") : k === "difficulty" ? (DIFF[q.difficulty] ?? 3) : k === "cause" ? q.cause : q.means[k];
-  // Every filter and the sort apply to all the questions; only then is the list cut into pages.
+  // on a phone only the number, the question and its outcome show; the scores are a tap away on the question
+  const heads = [["n", "#"], ["question", "Question"], ["out", "Outcome"], ...cols.map(m => [m, name(m)]), ["tags", "Topics"], ["difficulty", "Difficulty"], ["cause", "Cause"]];
+  const LEFT = new Set(["question", "out", "tags", "cause", "difficulty"]), WIDE = new Set(["n", "question", "out"]), MID = new Set(["tags", "difficulty", "cause"]);   // MID: shown on a wide screen only
+  const key = (q, k) => k === "n" ? q.n : k === "question" ? q.reps[0].question.toLowerCase() : k === "out" ? OUT_RANK[q.out.cls] * 10 + (q.out.word.length / 100) : k === "tags" ? q.tags.join(" ") : k === "difficulty" ? (DIFF[q.difficulty] ?? 3) : k === "cause" ? q.cause : q.means[k];
   const current = () => qs.filter(matches).sort((a, b) => { const x = key(a, state.sort), y = key(b, state.sort); return x == null ? 1 : y == null ? -1 : (x < y ? -1 : x > y ? 1 : 0) * state.dir || a.n - b.n; });
-  put(h("h2", { text: "Question by question" }), h("p", { class: "intro", text: "Each dot is one question. Click one to open the question." }), chartsSection(qs, open),
-    h("h2", { text: "Every question" }), caption("Mean over repeats. Click a heading to sort, a row to read the question and its answers."),
-    h("div", { class: "bar" }, select("Show", "view", [["all", "All questions"], ["failed", "Failed"], ["worse", "Got worse"]]),
-      select("Cause", "cause", [["", "Any cause"], ...causes.map(c => [c, c])]), select("Topic", "tag", [["", "Any topic"], ...tags.map(t => [t, t])]), search, count),
-    pagers[0], h("div", { class: "scroll tall" }, h("table", { class: "q" }, h("thead", {}, head), tbody)), pagers[1]);
+  const tally = new Map();
+  for (const q of qs) tally.set(q.out.word, (tally.get(q.out.word) || 0) + 1);
+  const order = [...tally].sort((a, b) => OUT_RANK[qs.find(q => q.out.word === b[0]).out.cls] - OUT_RANK[qs.find(q => q.out.word === a[0]).out.cls]);
+  put(h("h2", { id: "questions", text: "Questions" }),
+    h("p", { class: "tally" }, order.map(([w, n], i) => [i ? " · " : "", mark({ ...qs.find(q => q.out.word === w).out, word: `${n} ${w}` })])),
+    caption(`Mean over repeats; right means ${name("correctness")} ${P} or more. Tap a question to read it, its answer and how it was marked.`),
+    h("div", { class: "bar" }, select("Show", "view", [["all", "All questions"], ["bad", "Not right"], ["good", "Right"], ["failed", "Failed, with a cause"], ["worse", "Got worse"]]),
+      causes.length ? select("Cause", "cause", [["", "Any cause"], ...causes.map(c => [c, c])]) : null, tags.length ? select("Topic", "tag", [["", "Any topic"], ...tags.map(t => [t, t])]) : null, search, count),
+    pagers[0], h("div", { class: "scroll" }, h("table", { class: "q" }, h("thead", {}, head), tbody)), pagers[1]);
   heads.forEach(([k, t]) => {
     const b = h("button", { type: "button", class: "sort", text: t });
     b.addEventListener("click", () => { state.dir = state.sort === k ? -state.dir : 1; state.sort = k; state.page = 1; render(); });
-    head.append(h("th", { "aria-sort": "none", "data-k": k, class: k === "question" || k === "tags" || k === "cause" ? "left" : "" }, b, G[k] ? qmark(k) : null));
+    head.append(h("th", { "aria-sort": "none", "data-k": k, class: (LEFT.has(k) ? "left" : "") + (WIDE.has(k) ? "" : " sm-hide") + (MID.has(k) ? " md-hide" : "") }, b, G[k] ? qmark(k) : null));
   });
   function render() {
     head.querySelectorAll("th").forEach(th => th.setAttribute("aria-sort", th.dataset.k === state.sort ? (state.dir > 0 ? "ascending" : "descending") : "none"));
@@ -680,19 +810,28 @@ function run() {
     for (const q of shown.slice(pr.from, pr.to)) {
       const tr = h("tr", { class: "item", "data-id": q.id }, h("td", { text: q.n }),
         h("td", { class: "left" }, h("a", { class: "qlink", href: "#q-" + encodeURIComponent(q.id), text: shorten(q.reps[0].question, 110) }), h("span", { class: "qid", text: q.id }), q.worse ? h("span", { class: "down flag", text: "worse" }) : null),
-        h("td", { class: "left small", text: q.tags.join(", ") }), h("td", { class: "left", text: q.difficulty }),
-        cols.map(m => h("td", { class: m === "correctness" && q.means[m] != null && q.means[m] < P ? "down" : "", text: f2(q.means[m]) })), h("td", { class: "left", text: q.cause }));
+        h("td", { class: "left" }, mark(q.out)),
+        cols.map(m => h("td", { class: "sm-hide " + (m === "correctness" && q.means[m] != null && q.means[m] < P ? "down" : ""), text: f2(q.means[m]) })),
+        h("td", { class: "left small sm-hide md-hide wrap", text: q.tags.join(", ") }), h("td", { class: "left sm-hide md-hide", text: q.difficulty }), h("td", { class: "left sm-hide md-hide", text: q.cause }));
       tr.addEventListener("click", e => { if (!e.target.closest("a, .term")) open(q.id); });
       tbody.append(tr);
     }
   }
+  const figs = chartsSection(qs, open);
+  if (figs) put(h("h2", { text: "Charts" }), h("p", { class: "intro", text: "Each dot is one question. Click one to open it." }), figs);
+  put(runStats(S, D.compare));
+  put(h("h2", { class: "quiet", text: "Details" }),
+    more("By topic and difficulty", groupTable(S.tags, "Topic"), h("div", { class: "gap" }), groupTable(S.difficulty || {}, "Difficulty")),
+    h("p", { class: "small" }, "Download: ", h("a", { href: `${S.run}.csv`, download: "", text: "CSV" }), " · ", h("a", { href: `${S.run}.results.jsonl`, download: "", text: "JSON lines" }), " · ", h("a", { href: `${S.run}.summary.json`, download: "", text: "summary" }), "."),
+    h("p", { class: "small", text: `System: ${S.target}, model ${S.answering_model}. Judge: ${S.judge_model} (${S.judge_mode}). Questions: ${S.dataset.name} v${ver(S.dataset.version)} (${S.dataset.sha256.slice(0, 8)}). Code ${S.commit}. Took ${Math.round(S.total_s)} s. ${S.usage && useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost) ? `Whole run: ${useLine(S.usage.tokens_in, S.usage.tokens_out, S.usage.cost, S.usage.judge_tokens, S.usage.judge_cost)}. ` : ""}${D.vs ? `“Worse” is measured against the run of ${when(D.vs)}.` : "“Worse” needs an earlier run to measure against."}` }),
+    D.judge_check ? null : h("p", { class: "small", text: "No judge check yet for this judge and mode. Run: nasute judge-check" }));
 
   // The question view: one question across the whole page, with Previous and Next in the order the table is showing.
   function question(q) {
     const ids = current().map(x => x.id), at = ids.indexOf(q.id), seq = at < 0 ? qs.map(x => x.id) : ids, i = seq.indexOf(q.id), r0 = q.reps[0];
     const go = (id, text) => id ? h("a", { href: "#q-" + encodeURIComponent(id), text }) : h("span", { class: "muted", text });
     const nav = () => h("p", { class: "qnav" }, go(seq[i - 1], "← Previous question"), " · ", go(seq[i + 1], "Next question →"), at < 0 ? h("span", { class: "muted", text: " (in dataset order: this question is hidden by the table's filters)" }) : null);
-    detail.replaceChildren(crumbs(["../index.html", suiteName(D.suite)], ["#", `Run ${when(S.run)}`], [null, `Question ${q.n}`]),
+    detail.replaceChildren(crumbs(home, ["#", when(S.run)], [null, `Question ${q.n}`]),
       h("h1", { tabindex: "-1", text: `Question ${q.n}` }),
       h("p", { class: "small" }, h("span", { class: "qid inline", text: q.id }), ` ${q.difficulty}${q.tags.length ? ", " + q.tags.join(", ") : ""}${q.cause ? `. Cause of failure: ${q.cause}` : ""}.`), nav(),
       h("div", { class: "qview" }, h("h4", { text: "Question" }), quote(r0.question),
@@ -726,7 +865,7 @@ function run() {
 // ---- compare -------------------------------------------------------------------------------------
 function compare() {
   const c = D.compare, L = D.labels;
-  add(crumbs(["../index.html", suiteName(D.suite)], [null, "What changed"]), h("h1", { text: "What changed" }),
+  add(crumbs([D.dataset_href, D.suite.dataset], [null, "What changed"]), h("h1", { text: "What changed" }), h("p", { class: "lede", text: D.suite.target_label }),
     h("p", { class: "dateline" }, `${when(c.a)}${L[c.a] ? ` “${L[c.a]}”` : ""} to ${when(c.b)}${L[c.b] ? ` “${L[c.b]}”` : ""}. ${plural(c.shared, "question")} answered in both. `, c.warning ? note(c.warning) : null, c.notes.map(note),
       c.errors.newly.length ? note(`Newly failing: ${c.errors.newly.join(", ")}.`) : null, c.errors.recovered.length ? note(`Recovered: ${c.errors.recovered.join(", ")}.`) : null));
   if (!c.warning) {
@@ -751,4 +890,4 @@ function compare() {
   finish();
 }
 
-({ overview, suite, run, compare })[D.page]();
+({ overview, dataset, run, compare })[D.page]();

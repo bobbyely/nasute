@@ -27,9 +27,9 @@ A typical session has six steps.
 5. Nasute writes a report of plain HTML pages that you open in a browser.
 6. After your next change you run again, and Nasute compares the two runs question by question and reports "real gain", "real drop" or "within noise".
 
-![The report's overview page, a table with one row per suite](images/report-overview.png)
+![The report's dashboard: a card per dataset with its systems ranked, then a table of recent runs to tick and compare](images/report-overview.png)
 
-*The overview page of a report. Each row is one suite (one dataset tested on one system) with its latest Answer correctness, its range and a trend. Click a heading to sort.*
+*The dashboard of a report. Each dataset gets a card with its systems ranked by their latest main score, with cost and seconds per answer where known. Below it, the recent runs of every dataset: tick any of them and compare.*
 
 ## Where to go next
 

@@ -161,7 +161,7 @@
       "col": 5,
       "type": "database",
       "label": "Report pages",
-      "sublabel": "overview, suite, run, compare"
+      "sublabel": "dashboard, dataset, run, compare"
     },
     {
       "id": "syserr",

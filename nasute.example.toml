@@ -11,6 +11,10 @@ runs = "data/runs"
 # Where the static report goes (index.html and its pages). Give it a folder of its own: it is rewritten.
 report = "data/report"
 
+# Where that folder is served, if it is (such as "https://reports.example.org/nasute"). The link printed when a run ends
+# starts with it; empty, the link is a file:// address.
+report_url = ""
+
 # The dataset `run` asks when you give no --dataset.
 dataset = ""
 

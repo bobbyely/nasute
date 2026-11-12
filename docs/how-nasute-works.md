@@ -64,25 +64,29 @@ There are four things to notice in these numbers.
 
 ## How to read the report
 
-You open `report/index.html`, and from there the report has four kinds of page, each one click deeper than the last. The screenshots below come from a demo report with made-up data.
+You open `report/index.html`, and from there the report goes dashboard, then dataset, then run. A fourth kind of page compares two runs. The screenshots below come from a demo report with made-up data.
 
-**Overview.** The overview is one table with a row for each suite, which is one set of questions tested on one system. A row shows the dataset and its version, the system it was tested on, when the last run happened, the latest Answer correctness and Faithfulness as a dot on a 0 to 1 track with a band for the 95% range, the Error rate, a small trend of Answer correctness over the runs, and links to the runs and to the latest run's questions. Click a heading to sort. A line under the table says which judge marked the runs and how its latest check went. The trend is only a quick guide made by comparing two separate ranges, so the paired verdict on the suite and compare pages, which works question by question, is the one to trust.
+A score with nothing to show is left out everywhere rather than shown as 0: the source scores of a system that names no sources, Faithfulness when the judge mode does not measure it, and any score set only on attempts that failed. A chart with nothing in it is left out too, such as a trend with fewer than two runs. "–" means not measured, and is never coloured like a bad score.
 
-![The overview page](images/report-overview.png)
+**Dashboard.** The front page has a card for each dataset, with its systems ranked by the main score of their latest run (Answer correctness, or the first score that dataset measures), shown as a dot on a 0 to 1 track with a band for the 95% range, plus cost and seconds per answer where they are known. Below the cards is a table of recent runs across every dataset, newest first. Tick any runs and press Compare to see their headline scores side by side. Runs on different datasets asked different questions, so the page says that this is not a like-for-like test; for runs on one dataset it links to the dataset page, which compares them question by question. A line at the bottom says which judge marked the runs and how its latest check went.
 
-*The overview page: one row per suite, sortable by any column.*
+![The dashboard](images/report-overview.png)
 
-**Suite page.** This page gives the answer first, as one sentence and three big numbers (Answer correctness, Faithfulness and Error rate). Below that come the scores over time, one chart per score, where a small triangle marks every run you labelled (see `nasute run --label`) and hovering shows the label. Then comes a sortable table of every run, with range bars for Answer correctness and Faithfulness, a Scores table that shows each score's 95% CI and its change against the baseline (or against the previous run if there is no baseline), the reasons questions failed, and whether answers stayed the same across repeats. Details such as the topic breakdown and the judge's reliability are folded away at the bottom.
+*The dashboard: each dataset with its systems ranked, then the recent runs to tick and compare.*
 
-![A suite page](images/report-suite.png)
+**Dataset page.** One dataset and every system tested on it. "Latest by system" ranks the systems by their latest run. "Runs" lists every run, newest first, one row each: date, system, main scores, cost and speed. Tap a date to open the run, or tick two or more runs to compare them: their scores side by side, a "real change or noise?" table with the paired test when you pick two runs of the same questions, and a question-by-question grid of outcomes (by default only the questions where the runs differ). Then come the scores over time for one system at a time, where a small triangle marks every run you labelled (see `nasute run --label`).
 
-*A suite page: the answer in one sentence, three big numbers and the scores over time, with a triangle on the run that was labelled.*
+![A dataset page with two runs compared](images/report-dataset.png)
 
-**Run page.** This page starts with two charts of the run's questions, one dot for each question: a scatter of Faithfulness against Answer correctness, and box plots of a score by group. Below them is a table of every question, 50 to a page, that you can filter by failed or got-worse and sort by any column. Clicking a row or a dot opens that question on its own view, with its reference answer, the answer, the sources (as links when the system gives addresses for them), each claim with a tick or cross and the judge's reason, and the count sentence behind each score, so this is where you check the judge's work. Each run can also be downloaded as a CSV, as the saved results and as the summary: see [export a run](how-to/export-a-run.md). See [read a run page](how-to/read-a-run-page.md).
+*A dataset page: the systems ranked, every run, and two runs compared.*
 
-![A run page with its charts and questions table](images/report-run.png)
+**Run page.** This is where the numbers are. It gives the answer first, as one sentence and the headline scores, each with its 95% range and its change against the baseline (or the run before, when there is no baseline), and cost and seconds per answer. Next comes every question with its outcome: right, partly right (in knowledge mode, "right, with an error"), wrong, a system error, and for a question with no answer, declined or made something up. The list is 50 to a page; filter it by outcome, cause or topic, and sort by any column. Clicking a row opens that question on its own view, with its reference answer, the answer, the sources (as links when the system gives addresses for them), each claim with a tick or cross and the judge's reason, and the count sentence behind each score, so this is where you check the judge's work. Below the list are two charts of the questions, then the Scores table, the reasons questions failed, whether answers stayed the same across repeats, and the judge's reliability. Each run can also be downloaded as a CSV, as the saved results and as the summary: see [export a run](how-to/export-a-run.md). See [read a run page](how-to/read-a-run-page.md).
 
-*A run page: the charts of the run's questions, then the table of questions.*
+![A run page with its scores and questions](images/report-run.png)
+
+*A run page: the answer, the headline scores, then every question.*
+
+The old suite pages, `report/<dataset>@<target>/index.html`, now send you on to the dataset page, so old links and bookmarks still work.
 
 **Compare page.** This page puts two runs side by side. For each score it shows both means, the change, its range and a verdict of "real gain", "real drop" or "within noise", and then it lists each question that changed together with both answers.
 
@@ -97,7 +101,7 @@ Not every number in the report deserves the same trust, and this section says wh
 - **Trust the verdict more than the number.** A change counts as real only when its range stays clear of zero, and "within noise" means the data cannot tell the change from chance.
 - **Trust Answer correctness to tell a right answer from a wrong or empty one, and Faithfulness to tell whether the answer is grounded in the text the system read.** The judge-check (`judge-20261029T114345Z`) put 47 answers with known faults to the same judge. Faithfulness was in the expected range 100% of the time, with a Cohen's kappa of 1.00, where 1 means perfect agreement beyond chance. Answer correctness was in range 96% of the time (kappa 0.74). Faithfulness is not a truth test, because a claim that the extracts support scores as backed even if it is false, and an answer with no claims is not measured. See [the judge-check](explanation/the-judge-check.md).
 - **Do not lean on Answer relevancy.** In the same check it was in range only 72% of the time (kappa 0.51). A small judge blurs "on topic" with "true": all 13 of its misses were wrong, half-right or hedged answers that the judge marked "no" or "partly" even though they address the question, so you should read it as rough.
-- **Be careful with small samples.** Under 5 shared questions there is no verdict, and with fewer than about 30 questions the ranges are still a little too narrow. The "power" line on a suite page tells you how many questions it would take to see a 0.05 change.
+- **Be careful with small samples.** Under 5 shared questions there is no verdict, and with fewer than about 30 questions the ranges are still a little too narrow. The "power" line on a run page tells you how many questions it would take to see a 0.05 change.
 - **Watch for a judge that marks its own homework.** If the judge is the same model as the system, it tends to be kind to its own text, so use a different and stronger judge if you can.
 - **Look at the counting line.** A line such as "27 asked · 25 scored · 1 system error · 1 judge error" shows what was left out, and a run with too many judge errors is marked incomplete. See [how errors count](explanation/how-errors-count.md).
 

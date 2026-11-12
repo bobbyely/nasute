@@ -2,7 +2,7 @@
 and keeps every run so changes can be compared.
 
 How it runs, by hand (no cron, no background service):
-  nasute init [folder]           a starter nasute.toml and an example dataset
+  nasute init [folder] [--demo]  a starter nasute.toml and an example dataset (--demo: set up for demo-server)
   nasute run [--profile smoke|deep] [--dataset NAME --target NAME --version 1.2 --limit 3 --repeats 2]
   nasute judge-check [--mode quick|claims]   does the judge mark known answers the way we expect?
   nasute compare [RUN_A RUN_B]   default: the newest run against its baseline, else the run before it (same suite)
@@ -43,6 +43,7 @@ import threading
 import time
 import tomllib
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -67,6 +68,7 @@ DEFAULTS = {
     "datasets": ["datasets"],      # folders; relative ones start from the settings file's folder
     "runs": "data/runs",
     "report": "data/report",
+    "report_url": "",              # where the report folder is served, for the link printed after a run; "" = a file:// link
     "dataset": "",                 # the dataset `run` uses when --dataset is not given
     "judge_set": "",               # the dataset `judge-check` uses: answers with known faults
     "k": 5,                        # how many retrieved sources count
@@ -150,14 +152,60 @@ def label(m, k=None):
     return GLOSSARY[m]["term"].replace("@k", f"@{k}" if k else "@k")
 
 
+# Logging. Two looks for the same events: JSON lines (one object per line, for a server that reads job logs) and short
+# readable lines for a person at a terminal. `--log json|text` picks one; with neither, NASUTE_LOG decides, else text at a
+# terminal and JSON when the output goes to a file or a pipe. Both go to stdout. Events carry ids, counts and scores only.
 class JsonLines(logging.Formatter):
     def format(self, r):
         return json.dumps({"time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "level": r.levelname.lower(),
                            "app": "nasute", "event": r.getMessage(), **getattr(r, "details", {})})
 
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-logging.getLogger().handlers[0].setFormatter(JsonLines())
+class Readable(logging.Formatter):
+    """One short line per event, such as `[3/24] gold-79 ... right (2.1 s)`. Warnings and errors start with a word in capitals,
+    in colour at a terminal (unless NO_COLOR is set)."""
+    SAY = {
+        "question_done": lambda d: f"[{d['n']}/{d['of']}] {d['id']}{Readable.again(d)} ... {Readable.result(d)}" + (f" ({d['total_s']} s)" if d.get("total_s") is not None else ""),
+        "run_start": lambda d: f"Run {d['run']}: {d['dataset']} v{d['version']} asked of {d['target']}, {d['questions']} questions"
+                               + (f" × {d['repeats']} repeats" if d["repeats"] > 1 else "") + f", {d['judge_mode']} judge" + (f", {d['profile']} profile" if d.get("profile") else ""),
+        "judge_item_done": lambda d: f"judged {d['id']}" + (f": judge error: {d['judge_error']}" if d.get("judge_error") else ""),
+        "report_written": lambda d: f"Report written: {d['folder']}",
+    }
+
+    again = staticmethod(lambda d: f" (repeat {d['repeat']})" if d.get("repeats", 1) > 1 else "")
+    result = staticmethod(lambda d: f"system error: {d['error']}" if d.get("error") else f"not judged: {d['judge_error']}" if d.get("judge_error") else d.get("outcome") or "done")
+
+    def __init__(self, colour):
+        super().__init__()
+        self.colour = colour
+
+    def format(self, r):
+        d, event = getattr(r, "details", {}), r.getMessage()
+        try:
+            text = self.SAY[event](d) if event in self.SAY else event.replace("_", " ") + (": " + ", ".join(f"{k} {v}" for k, v in d.items()) if d else "")
+        except (KeyError, TypeError):   # an event without the usual details still prints, plainly
+            text = f"{event}: {d}"
+        if r.levelno >= logging.WARNING:
+            word = "ERROR" if r.levelno >= logging.ERROR else "WARNING"
+            text = (f"\033[{31 if word == 'ERROR' else 33};1m{word}\033[0m " if self.colour else word + " ") + text
+        return text
+
+
+def setup_logging(style=None):
+    """style: "json", "text" or None (NASUTE_LOG, else text at a terminal and JSON otherwise). -> the style used."""
+    root = logging.getLogger()
+    if not getattr(root, "nasute", None):   # one handler, made once, on the stdout of the time; later calls only change its look
+        root.handlers[:] = [logging.StreamHandler(sys.stdout)]
+        root.setLevel(logging.INFO)
+        root.nasute = True
+    out = root.handlers[0].stream
+    tty = hasattr(out, "isatty") and out.isatty()
+    style = style or os.environ.get("NASUTE_LOG") or ("text" if tty else "json")
+    root.handlers[0].setFormatter(JsonLines() if style == "json" else Readable(tty and not os.environ.get("NO_COLOR")))
+    return style
+
+
+setup_logging("json")   # until main() picks: a library caller (and the tests) get the JSON lines
 
 
 def log(event, level=logging.INFO, **details):
@@ -916,7 +964,8 @@ def attempts(cfg, kind, q, tcfg, save=lambda row: None, stop=None):
         reasons = retrieval_reasons(q["sources"], got["sources"], cfg["k"], scores)
         judged, detail, jerr, judge_s, judge_tokens, judge_cost = {}, None, None, None, None, None
         if got["error"]:   # strict: no answer scores 0 on every score that needs one
-            need = ["abstention"] if q.get("answerable", True) is False else [m for m in GENERATION if m != "context_recall" or cfg["judge"]["mode"] == "claims"]
+            mode = cfg["judge"]["mode"]   # only the scores this judge mode measures: knowledge mode has no faithfulness, only claims mode has context recall
+            need = ["abstention"] if q.get("answerable", True) is False else ["correctness", "relevancy"] if mode == "knowledge" else [m for m in GENERATION if m != "context_recall" or mode == "claims"]
             judged = {m: 0.0 for m in need}
             reasons.update({m: f"{label(m, cfg['k'])} 0: system error, counted as 0 (strict). {clip(got['error'], 100)}." for m in need})
         else:
@@ -976,10 +1025,15 @@ def run(cfg, name, version, limit, target=None, label=""):
         log("repeats_may_be_identical", logging.WARNING, note="temperature is 0: repeats differ only if the system or the search varies by itself")
     start, aborted, down, lock, stop = time.monotonic(), None, 0, threading.Lock(), threading.Event()
 
+    done = [0]
+
     def save(row):   # every attempt goes to disk as it finishes, from any worker, so a crash loses nothing that was done
         with lock, open(out / "results.partial.jsonl", "a") as f:
             f.write(json.dumps(row) + "\n")
-        log("question_done", id=row["id"], repeat=row["repeat"], error=row["error"], judge_error=row["judge_error"], total_s=row["total_s"], judge_s=row["judge_s"], scores=row["scores"])
+            done[0] += 1
+            n = done[0]
+        log("question_done", logging.WARNING if row["error"] or row["judge_error"] else logging.INFO, n=n, of=len(questions) * cfg["repeats"], id=row["id"], repeat=row["repeat"], repeats=cfg["repeats"],
+            outcome=outcome_word(row, cfg["pass_at"], cfg["judge"]["mode"]), error=row["error"], judge_error=row["judge_error"], total_s=row["total_s"], judge_s=row["judge_s"], scores=row["scores"])
 
     with ThreadPoolExecutor(max_workers=cfg["workers"]) as pool:
         futures = [pool.submit(attempts, cfg, kind, q, tcfg, save, stop) for q in questions]
@@ -1006,13 +1060,74 @@ def run(cfg, name, version, limit, target=None, label=""):
         "judge_reliability": latest_judge_check(cfg, cfg["judge"]["model"], cfg["judge"]["mode"]),
         "time_to_first_text_s": mean_std([r["first_text_s"] for r in rows])["mean"], "usage": usage_totals(rows)})
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
-    log("run_done", run=run_id, total_s=summary["total_s"], counts=summary["counts_line"], aborted=aborted, incomplete=summary["incomplete"])
+    if aborted:
+        log("run_aborted", logging.ERROR, run=run_id, why=aborted)
     if summary["incomplete"]:
         log("run_incomplete", logging.WARNING, judge_error_rate=summary["judge_error_rate"], limit=cfg["max_judge_errors"])
-    print(summary["counts_line"] + ("\nABORTED: " + aborted if aborted else "") + ("\nINCOMPLETE: too many judge errors" if summary["incomplete"] else ""))
-    print("\n".join(describe(summary)))
     report(cfg)
+    page = report_link(cfg, summary)
+    keep = measured(rows)
+    if logging.getLogger().handlers and isinstance(logging.getLogger().handlers[0].formatter, Readable):
+        print("\n".join(run_summary(summary, rows, page)))
+    else:   # one JSON line a log reader can take whole: the same facts as the readable summary
+        log("run_done", run=run_id, total_s=summary["total_s"], counts=summary["counts_line"], aborted=aborted, incomplete=summary["incomplete"], report=page,
+            scores={m: {"mean": summary["metrics"][m]["mean"], "ci": summary["metrics"][m]["ci"]} for m in keep if summary["metrics"][m]["mean"] is not None},
+            errors=[f["id"] for f in summary.get("failures", [])], usage={k: v for k, v in (summary.get("usage") or {}).items() if k != "per_answer" and v is not None})
     return run_id
+
+
+def outcome_word(row, pass_at, mode):
+    """What became of one attempt, in a word or three; the same rule as outcome() in assets/report.js."""
+    if row.get("error"):
+        return "system error"
+    if row.get("answerable", True) is False:
+        v = row["scores"].get("abstention")
+        return "not judged" if v is None else "declined" if v >= 1 else "declined, with an error" if v > 0 else "made something up"
+    v = row["scores"].get("correctness")
+    return "not judged" if v is None else "right" if v >= pass_at else ("right, with an error" if mode == "knowledge" else "partly right") if v > 0 else "wrong"
+
+
+def measured(rows):
+    """The scores a run really measured. A score set only on attempts that failed (the strict 0, say faithfulness in a mode that
+    never measures it) is not measured, nor is a source score when the system named no source at all. Such a score is left out
+    of the report and the summary rather than shown as 0.00, which would look like a bad result. Error rate is always measured."""
+    answered = [r for r in rows if not r.get("error")] or rows   # every attempt failed: the strict zeros are all there is
+    cited = any(r.get("sources") for r in rows)
+    return [m for m in METRICS if m == "error_rate" or (any(r["scores"].get(m) is not None for r in answered) and (m not in RETRIEVAL or cited))]
+
+
+def report_link(cfg, summary):
+    """Where the run's report page is: under the report_url setting when it is set, else a file:// address."""
+    rel = f"{pages.slug(suite_of(summary))}/runs/{summary['run']}.html"
+    if cfg.get("report_url"):
+        return cfg["report_url"].rstrip("/") + "/" + urllib.parse.quote(rel, safe="/@")
+    return (folder(cfg["report"]) / rel).resolve().as_uri()
+
+
+def run_summary(summary, rows, page):
+    """The lines printed when a run ends, for a person: counts, the measured scores with their 95% ranges, errors, tokens and cost, the report."""
+    k, keep = summary["settings"].get("k"), measured(rows)
+    lines = ["", f"Run {summary['run']} finished in {round(summary['total_s'])} s: {summary['counts_line']}"]
+    if summary.get("aborted"):
+        lines.append(f"STOPPED EARLY: {summary['aborted']}")
+    if summary.get("incomplete"):
+        lines.append(f"INCOMPLETE: {summary['judge_error_rate']:.0%} of answers could not be judged")
+    width = max((len(label(m, k)) for m in keep), default=0)
+    for m in keep:
+        s = summary["metrics"][m]
+        if s["mean"] is not None:
+            lines.append(f"  {label(m, k).ljust(width)}  {s['mean']:.2f}" + (f"  (95% range {max(0, s['ci'][0]):.2f}–{min(1, s['ci'][1]):.2f})" if s["ci"] else ""))
+    fails = summary.get("failures") or []
+    if fails:
+        lines.append(f"System errors: {len(fails)} ({', '.join(f['id'] for f in fails[:8])}{', ...' if len(fails) > 8 else ''})")
+    u = summary.get("usage") or {}
+    spent = [f"{u['tokens_in'] or 0} tokens in, {u['tokens_out'] or 0} out" if u.get("tokens_in") is not None or u.get("tokens_out") is not None else "",
+             f"US${u['cost']:.4f}" if u.get("cost") is not None else "", f"judging {u['judge_tokens']} tokens" if u.get("judge_tokens") is not None else "",
+             f"judging US${u['judge_cost']:.4f}" if u.get("judge_cost") is not None else ""]
+    if any(spent):
+        lines.append("Used: " + "; ".join(x for x in spent if x))
+    lines.append(f"Report: {page}")
+    return lines
 
 
 # ---- compare and report ---------------------------------------------------------------------
@@ -1223,8 +1338,11 @@ def show_compare(c):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--config")
+    p.add_argument("--log", choices=["text", "json"], help="how progress is printed: text for a person, json lines for a log reader (default: text at a terminal, else json; or NASUTE_LOG)")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("init", help="write a starter nasute.toml and an example dataset").add_argument("folder", nargs="?", default=".")
+    ini = sub.add_parser("init", help="write a starter nasute.toml and an example dataset")
+    ini.add_argument("folder", nargs="?", default=".")
+    ini.add_argument("--demo", action="store_true", help="point the settings at `nasute demo-server`, to try Nasute with no model")
     r = sub.add_parser("run")
     r.add_argument("--profile")
     r.add_argument("--dataset")
@@ -1270,8 +1388,9 @@ def main(argv=None):
     rd.add_argument("run")
     rd.add_argument("--yes", action="store_true")
     a = p.parse_args(argv)
+    setup_logging(a.log)
     if a.cmd == "init":
-        return manage.init(a.folder)
+        return manage.init(a.folder, a.demo)
     cfg = load_settings(a.config, getattr(a, "profile", None))
     if getattr(a, "mode", None):
         cfg["judge"]["mode"] = a.mode
