@@ -9,7 +9,7 @@ Thank you for helping. Small, focused changes are easiest to review.
 
 ## Making a change
 
-1. Fork the repo and make a branch.
+1. Fork the repo and make a branch. To try your change as the `nasute` command, install it editable in a virtual environment: `python3 -m venv .venv && .venv/bin/pip install -e .` (then `.venv/bin/nasute`).
 2. Make the change. Every file starts with a short header saying what it does; comments say why, not what.
 3. Changed a score, a setting, a prompt or a file format? Update the matching page in `docs/reference/` in the same change.
 4. Run the checks. They need no network, no model and no install:

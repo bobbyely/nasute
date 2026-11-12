@@ -183,6 +183,8 @@ ol.claims .yes, ol.claims .no, ol.claims .muted { margin-right: 4px; }
   main { padding: 16px 18px 72px; }
   .figures, .sides { grid-template-columns: 1fr; }
   .sm-hide { display: none; }
+  /* long system names wrap, so the score column of a ranking stays on screen */
+  table.sortable td:first-child { white-space: normal; max-width: 11em; }
   /* a wide table scrolls inside its own box, never the page; its first column stays in view */
   table { min-width: max-content; }
   .scroll:has(.narrow) { max-width: none; }
@@ -326,3 +328,17 @@ table.side td, table.side th { white-space: normal; }
 .sortable.runs td:nth-child(2) { white-space: normal; }
 @media (max-width: 640px) { table.runs { min-width: 0; } .sortable.runs td:nth-child(2) { min-width: 0; overflow-wrap: anywhere; } }
 @media (max-width: 1250px) { .md-hide { display: none; } }   /* topic, difficulty and cause: on the question itself, and in the filters */
+/* at a glance on the run page: a stacked bar per difficulty, a block per outcome. Okabe and Ito's colour-blind-safe colours;
+   "not judged" is pale grey, never a bad colour. Each block is a button that filters the question list. */
+:root { --o-right: #0072b2; --o-part: #56b4e9; --o-wrong: #d55e00; --o-err: #3d3d3d; --o-dec: #009e73; --o-decpart: #8fd3b8; --o-made: #cc79a7; --o-na: #d9d4ca; }
+@media (prefers-color-scheme: dark) { :root { --o-right: #3d9be0; --o-err: #b8b3a8; --o-na: #4a4741; } }
+.glance { display: grid; gap: 8px; margin: 4px 0 6px; max-width: 760px; }
+.grow { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); align-items: center; gap: 10px; }
+.glabel { font-size: 0.9rem; color: var(--quiet); }
+.gbar { display: flex; gap: 2px; min-width: 0; }
+.seg { flex: 1 1 0; min-width: 26px; min-height: 32px; border: 0; padding: 0 4px; border-radius: 3px; font: 600 0.85rem var(--sans); color: #fff; cursor: pointer; overflow: hidden; }
+.seg:hover { filter: brightness(1.1); }
+.seg.o-part, .seg.o-decpart, .seg.o-na { color: #1c1b19; }
+.o-right { background: var(--o-right); } .o-part { background: var(--o-part); } .o-wrong { background: var(--o-wrong); } .o-err { background: var(--o-err); }
+.o-dec { background: var(--o-dec); } .o-decpart { background: var(--o-decpart); } .o-made { background: var(--o-made); } .o-na { background: var(--o-na); }
+@media (prefers-color-scheme: dark) { .seg.o-err { color: #1c1b19; } }
