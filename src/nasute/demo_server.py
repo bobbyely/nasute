@@ -48,7 +48,12 @@ class Handler(BaseHTTPRequestHandler):
         self.reply({"data": [{"id": "fake-judge"}]})   # GET /v1/models
 
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        length = self.headers.get("Content-Length") or ""
+        size = int(length) if length.isdigit() else -1
+        if not 0 <= size <= 1_000_000:   # a missing, negative or huge length would stall this one-at-a-time server
+            self.send_error(400, "Content-Length needed, at most 1 MB")
+            return
+        body = json.loads(self.rfile.read(size))
         if self.path == "/ask":
             question = body["question"].lower()
             answer, source = next((v for k, v in FACTS.items() if k in question), ("I don't know.", None))

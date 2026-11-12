@@ -1679,6 +1679,120 @@ def logging_checks():
     assert "--log" in (ROOT / "docs" / "reference" / "commands.md").read_text() and "report_url" in (ROOT / "README.md").read_text() + (ROOT / "docs" / "reference" / "settings.md").read_text()
 
 
+def security_checks():
+    """The 0.1.0 security audit's fixes: usage numbers, secrets in saved settings, CSV cells, serve's Host check,
+    redirects to another host, the demo server's request size, and the vendored scripts' recorded SHA-256."""
+    import hashlib
+    import http.client
+    import http.server
+    import threading
+    import urllib.request
+    from nasute.targets import http as target_http
+
+    # usage: NaN, Infinity and negatives are "not known", and page data stays valid JSON even for old runs that hold them
+    for bad in (float("nan"), float("inf"), -1, True, "3"):
+        assert not target_http.usage_number(bad), bad
+    assert target_http.usage_number(0) and target_http.usage_number(12.5) and target_http.usage_number(10 ** 400)
+    embedded = pages.embed({"usage": {"cost": float("nan"), "tokens": [float("inf"), 3]}})
+    assert json.loads(embedded) == {"usage": {"cost": None, "tokens": [None, 3]}}, embedded
+
+    # public(): anything under a secret-like name, at any depth; keys in URLs; ordinary names untouched
+    cfg = {"targets": {"a": {"url": "https://u:DUMMY-USERINFO@api.example/ask?key=DUMMY-URL&model=x", "headers": {"Authorization": "DUMMY-HEADER"},
+                             "request": {"q": "{question}", "authorization": "DUMMY-BODY", "credentials": "DUMMY-CRED", "passphrase": "DUMMY-PASS"},
+                             "api_keys": ["DUMMY-LIST"], "token": {"value": "DUMMY-NESTED"}, "api_key": "DUMMY-SCALAR"}},
+           "pass_at": 0.5, "judge": {"url": "http://127.0.0.1:8000/v1"}}
+    out = json.dumps(nasute.public(cfg))
+    assert "DUMMY" not in out, out
+    shown = nasute.public(cfg)
+    assert shown["pass_at"] == 0.5 and shown["judge"]["url"] == "http://127.0.0.1:8000/v1" and shown["targets"]["a"]["headers"] == ["Authorization"]
+    assert shown["targets"]["a"]["url"] == "https://api.example/ask?key=(hidden)&model=(hidden)", shown["targets"]["a"]["url"]
+
+    # CSV: a formula character after ; or tab gets an apostrophe too, as at the start
+    assert nasute.csv_safe("ok;=1+1") == "ok;'=1+1" and nasute.csv_safe("a\t@SUM(1)") == "a\t'@SUM(1)" and nasute.csv_safe("=1") == "'=1"
+    assert nasute.csv_safe("a; b") == "a; b" and nasute.csv_safe(3) == 3
+
+    # serve on loopback answers only loopback names (a DNS-rebinding page would send its own)
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "index.html").write_text("hi")
+        server = manage.make_server({"report": d}, "127.0.0.1", 0)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            for host, want in (("127.0.0.1", 200), ("localhost", 200), ("[::1]", 200), ("127.0.0.2", 200), ("rebind.attacker.example", 421), ("", 421)):
+                c = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                c.putrequest("GET", "/index.html", skip_host=True)
+                if host:
+                    c.putheader("Host", f"{host}:{server.server_address[1]}")
+                c.endheaders()
+                got = c.getresponse().status
+                assert got == want, (host, got)
+                c.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    # any loopback address counts as this machine, so the Host check applies there too
+    assert manage.loopback("127.0.0.2") and manage.loopback("::ffff:127.0.0.1") and manage.loopback("[::1]") and not manage.loopback("0.0.0.0") and not manage.loopback("example.com")
+    # https to http on the same host is a downgrade: headers go no further either
+    req = urllib.request.Request("https://api.example/x", headers={"Authorization": "Bearer DUMMY"})
+    new = target_http.SameHostHeaders().redirect_request(req, None, 302, "Found", {}, "http://api.example/y")
+    assert "Authorization" not in new.headers, new.headers
+
+    # a redirect to another host drops the configured headers (they may hold the key); to the same host they stay
+    seen = {}
+
+    class Hop(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen[self.server.server_address[0], self.path] = self.headers.get("Authorization")
+            if self.path == "/start":
+                self.send_response(302)
+                self.send_header("Location", self.server.next_url)
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    servers = [http.server.HTTPServer((h, 0), Hop) for h in ("127.0.0.1", "127.0.0.2")]
+    for srv in servers:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        a, b = servers
+        for srv, target in ((a, b), (a, a)):
+            srv.next_url = f"http://{target.server_address[0]}:{target.server_address[1]}/end"
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{a.server_address[1]}/start", headers={"Authorization": "Bearer DUMMY"}), timeout=5).read()
+        assert seen[("127.0.0.1", "/start")] == "Bearer DUMMY" and seen[("127.0.0.2", "/end")] is None and seen[("127.0.0.1", "/end")] == "Bearer DUMMY", seen
+    finally:
+        for srv in servers:
+            srv.shutdown()
+            srv.server_close()
+
+    # the demo server refuses a missing or huge Content-Length instead of waiting on it
+    from nasute import demo_server
+    srv = http.server.HTTPServer(("127.0.0.1", 0), demo_server.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        for length in (None, "99999999", "-5"):
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+            c.putrequest("POST", "/ask")
+            if length is not None:
+                c.putheader("Content-Length", length)
+            c.endheaders()
+            assert c.getresponse().status == 400, length
+            c.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    # the vendored scripts are the ones whose SHA-256 the docs record
+    recorded = dict(re.findall(r"`([\w.-]+\.(?:js|css))`[^`]*?SHA-256 `([0-9a-f]{64})`", (ROOT / "docs/reference/data-layout.md").read_text()))
+    assert len(recorded) == 4, recorded
+    for name, digest in recorded.items():
+        assert hashlib.sha256((ROOT / "src/nasute/assets" / name).read_bytes()).hexdigest() == digest, name
+
+
 def main():
     # retrieval maths
     s = nasute.retrieval_scores(["Iron", "Steel"], ["Gold", "iron", "Copper"], 5)
@@ -1771,6 +1885,7 @@ def main():
     dashboard_checks()
     logging_checks()
     init_demo_checks()
+    security_checks()
     print("nasute checks passed")
 
 

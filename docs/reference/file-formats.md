@@ -91,7 +91,7 @@ This file holds the scores and everything needed to interpret them, such as the 
 | `aborted` | Null, or why the run stopped early. |
 | `questions`, `attempts`, `total_s` | Distinct questions, attempts, wall-clock seconds. |
 | `dataset` | `{name, version, sha256}`. The version is text such as `"1.2.0"`. Runs from before versions had three parts store a whole number (`2`), which is read as `2.0.0`. |
-| `settings` | The settings used, with each `headers` table cut down to its names, and any setting named like key, token, secret or password hidden. Folder paths are saved as absolute paths. |
+| `settings` | The settings used, with each `headers` table cut down to its names, anything (a value, list or table) under a name like key, token, secret, password, auth or credential hidden, and any URL's `user:password@` and query values hidden. Folder paths are saved as absolute paths. |
 | `profile`, `judge_mode`, `judge_cache`, `temperature`, `repeats`, `pass_at` | The run's main settings. |
 | `metrics` | Per score: `mean`, `std`, `se`, `ci` (95% interval), `n` (questions), `attempts`. Strict: a system error counts as 0. |
 | `metrics_answered` | The same without the attempts where the system errored. No `error_rate`. |

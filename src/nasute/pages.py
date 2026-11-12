@@ -23,6 +23,7 @@ shortcut: every page embeds all its data, about 15 KB per answer in claims mode 
 import hashlib
 import html
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -64,8 +65,17 @@ def slug(suite):
     return suite if plain == suite and re.match(r"\w", suite) and ".." not in suite else plain.lstrip(".") + "~" + hashlib.sha1(suite.encode()).hexdigest()[:8]   # "~" is not allowed in a name, so this never equals a real id
 
 
+def finite(node):
+    """NaN and Infinity become None: JSON.parse refuses them, and one bad number would blank the whole page (runs saved before 0.1.0 may hold them)."""
+    if isinstance(node, float) and not math.isfinite(node):
+        return None
+    if isinstance(node, dict):
+        return {k: finite(v) for k, v in node.items()}
+    return [finite(x) for x in node] if isinstance(node, list) else node
+
+
 def embed(data):
-    return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    return json.dumps(finite(data), ensure_ascii=False, allow_nan=False).replace("<", "\\u003c")
 
 
 # The old suite page's address: a page with no script that sends the reader on to the dataset page.
