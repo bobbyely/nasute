@@ -647,7 +647,7 @@ def judge_use_add(usage):
         return
     if not hasattr(JUDGE_USE, "tokens"):
         judge_use_reset()
-    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    num = http.usage_number
     if num(usage.get("total_tokens")):   # anything else is ignored: usage is a note, never a reason to fail a judgement
         JUDGE_USE.tokens = (JUDGE_USE.tokens or 0) + usage["total_tokens"]
     if num(usage.get("cost")):
@@ -903,15 +903,23 @@ def counting_line(c):
     return f"{c['asked']} asked · {c['scored']} scored · {plural(c['system_errors'], 'system error')} · {plural(c['judge_errors'], 'judge error')}"
 
 
-SECRETISH = re.compile(r"key|token|secret|passw", re.I)
+SECRETISH = re.compile(r"key|token|secret|passw|passphrase|auth|credential", re.I)   # not a bare "pass": pass_at is an ordinary setting
 
 
 def public(node):
-    """The settings as saved with a run, at every depth (profiles too, used or not): a `headers` table keeps its names only,
-    and any setting named like a key, token, secret or password is hidden. Header values may be secrets."""
+    """The settings as saved with a run, at every depth (profiles too, used or not): a `headers` table keeps its names only;
+    anything (a value, list or table) under a key-, token-, secret-, password-, auth- or credential-like name is hidden;
+    and a URL loses any user:password@ and the values in its query string, where some services take their key."""
     if isinstance(node, dict):
-        return {k: sorted(v) if k == "headers" and isinstance(v, dict) else "(hidden)" if SECRETISH.search(k) and not isinstance(v, (dict, list)) else public(v) for k, v in node.items()}
-    return [public(x) for x in node] if isinstance(node, list) else node
+        return {k: sorted(v) if k == "headers" and isinstance(v, dict) else "(hidden)" if SECRETISH.search(k) else public(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [public(x) for x in node]
+    if isinstance(node, str) and "://" in node:
+        p = urllib.parse.urlsplit(node)
+        if p.query or "@" in p.netloc:
+            query = "&".join(f"{q.partition('=')[0]}=(hidden)" for q in p.query.split("&")) if p.query else ""
+            return urllib.parse.urlunsplit((p.scheme, p.netloc.rpartition("@")[2], p.path, query, ""))
+    return node
 
 
 def summarise(rows, fingerprint, cfg, extra):
@@ -1157,9 +1165,16 @@ RUN_COLUMNS = ["run", "id", "repeat", "tags", "difficulty", "answerable", *METRI
 SUITE_COLUMNS = ["run", "date", "profile", "judge_mode", "target", "answering_model", "judge_model", "dataset_version", "id", "tags", "difficulty", *METRICS, "attempts", "errors"]
 
 
+FORMULA_AFTER_SPLIT = re.compile(r"([;\t])([=+\-@])")
+
+
 def csv_safe(text):
-    """A spreadsheet runs a cell that starts with = + - or @ as a formula, and answers come from a language model. A leading apostrophe keeps it text."""
-    return "'" + text if isinstance(text, str) and text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+    """A spreadsheet runs a cell that starts with = + - or @ as a formula, and answers come from a language model. A leading apostrophe keeps it text.
+    Spreadsheets set to split on ; or tab (some locales do by default) start a new cell there, so a formula character after one gets an apostrophe too."""
+    if not isinstance(text, str):
+        return text
+    text = FORMULA_AFTER_SPLIT.sub(r"\1'\2", text)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
 def run_csv(summary, rows, out):

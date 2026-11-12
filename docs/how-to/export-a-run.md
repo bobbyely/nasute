@@ -8,7 +8,7 @@ When Nasute writes the report, it puts three files beside each run page, in `rep
 
 - `<run>.csv` has one row for every attempt, with the run id, the question id, the repeat, the tags (joined with `;`), the difficulty, whether it was answerable, every score, the failure cause, any error, the timings, and then the question, the reference answer and the answer.
 - `<run>.results.jsonl` is a copy of the saved results, one JSON object per attempt, with everything the run recorded, including the judge's claims.
-- `<run>.summary.json` is a copy of the run's summary. It goes through the same hiding of secrets as the saved summary, so it holds header names but never header values or keys.
+- `<run>.summary.json` is a copy of the run's summary. It goes through the same hiding of secrets as the saved summary, so it holds header names but never header values or keys: anything under a name like key, token, secret, password, auth or credential is hidden, and a URL keeps its query names but not their values.
 
 Each suite folder also has `runs.csv`, which has one row for every question in every run of the suite: the run, its date, profile, judge mode, target, models and dataset version, then the question id, tags, difficulty, the mean of each score over the repeats, and how many attempts and errors there were. That is the file to use for a chart of one question over time.
 
@@ -28,7 +28,7 @@ The first command prints the per-attempt CSV for one run (a run id, or the start
 
 ## Opening the files in a spreadsheet
 
-The files are UTF-8 with a header row. If an answer or question starts with `=`, `+`, `-` or `@`, Nasute puts a single apostrophe in front of it, because a spreadsheet would otherwise run it as a formula. Remove the apostrophe if you need the exact text.
+The files are UTF-8 with a header row. If an answer or question starts with `=`, `+`, `-` or `@`, Nasute puts a single apostrophe in front of it, because a spreadsheet would otherwise run it as a formula. It does the same after a `;` or a tab inside the text, because some spreadsheets split cells there. Remove the apostrophe if you need the exact text.
 
 ---
 

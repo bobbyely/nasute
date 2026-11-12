@@ -30,3 +30,8 @@ garden handbook. Also:
   a run totals them, the judge's own use is totalled too, and the report shows them.
 - `examples/`: settings for an OpenAI-compatible API and for Ollama.
 - `SECURITY.md`, `CONTRIBUTING.md` and `llms.txt`.
+- Security, from an audit before release: token counts and costs must be finite numbers of 0 or more (a NaN from a system
+  under test blanked the report); saved settings hide anything under a key-, auth- or credential-like name at any depth, and
+  keys in URLs; CSV cells get an apostrophe before a formula character after `;` or a tab too; `serve` on 127.0.0.1 answers
+  only localhost names; a redirect to another host drops the configured headers; the demo server refuses a missing or huge
+  request; the PyPI publish step is pinned to a commit; a test checks the vendored scripts' SHA-256.

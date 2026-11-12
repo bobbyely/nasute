@@ -13,6 +13,7 @@ Settings, under [targets.<name>]: url, method (POST), headers, request, answer, 
             "..", no slices. answer is required and must be text; sources and extracts are optional lists of text.
 """
 import json
+import math
 import os
 import re
 import time
@@ -112,6 +113,30 @@ def paired_links(reply, spath, lpath, sources):
     return []
 
 
+class SameHostHeaders(urllib.request.HTTPRedirectHandler):
+    """urllib follows a redirect with the same headers. To another host, or from https to http, only harmless ones go: the rest may carry an API key."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        old, to = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if new is not None and (to.scheme.lower(), to.netloc.lower()) != (old.scheme.lower(), old.netloc.lower()):
+            for name in list(new.headers):
+                if name.lower() not in ("user-agent", "accept"):
+                    del new.headers[name]
+            new.unredirected_hdrs.clear()
+        return new
+
+
+# Process-wide, so the judge's requests (nasute.post) and any urlopen in a module target get it too: Nasute is a command, not a library.
+urllib.request.install_opener(urllib.request.build_opener(SameHostHeaders))
+
+
+def usage_number(v):
+    """A token count or cost worth keeping: a finite number of 0 or more. NaN or Infinity would also make the report's page data invalid JSON."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    return v >= 0 if isinstance(v, int) else math.isfinite(v) and v >= 0   # isfinite() overflows on a huge int
+
+
 def ask(question, cfg, timeout):
     """-> {answer, sources, links, extracts, first_text_s, total_s, error}. Never raises."""
     cfg = {**DEFAULTS, **cfg}
@@ -134,9 +159,9 @@ def ask(question, cfg, timeout):
                 out[key] = texts([x for f in json_path(reply, cfg[key]) for x in (f if isinstance(f, list) else [f])])
         if cfg["links"] and cfg["sources"]:
             out["links"] = paired_links(reply, cfg["sources"], cfg["links"], out["sources"])
-        for key in USAGE:   # a number, or None when the reply doesn't say
+        for key in USAGE:   # a number of 0 or more, or None when the reply doesn't say (json.load accepts NaN and Infinity)
             got = json_path(reply, cfg[key]) if cfg[key] else []
-            out[key] = got[0] if got and isinstance(got[0], (int, float)) and not isinstance(got[0], bool) else None
+            out[key] = got[0] if got and usage_number(got[0]) else None
     except urllib.error.HTTPError as e:   # first: an HTTPError is also a URLError
         out["error"] = f"HTTP {e.code}: {e.reason}"
     except Exception as e:

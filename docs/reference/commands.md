@@ -84,7 +84,7 @@ nasute report
 nasute serve [--port PORT] [--host HOST]
 ```
 
-The defaults are port 8765 and host 127.0.0.1, which means this machine only. Report pages also open straight from disk, so you need `serve` only if your browser blocks local files.
+The defaults are port 8765 and host 127.0.0.1, which means this machine only. On 127.0.0.1 it also answers only requests addressed to `localhost` or `127.0.0.1`, so a web page using another name can't read your report through your browser. Report pages also open straight from disk, so you need `serve` only if your browser blocks local files.
 
 ## dataset
 

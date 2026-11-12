@@ -6,10 +6,12 @@ folder, the next dataset version, runs/index.json, or (delete) a run folder.
 """
 import csv
 import functools
+import ipaddress
 import http.server
 import json
 import os
 import shutil
+import urllib.parse
 from pathlib import Path
 
 import nasute as N
@@ -344,11 +346,38 @@ def runs_delete(cfg, text, yes=False):
 
 # ---- serve --------------------------------------------------------------------------------------
 
+def loopback(name):
+    """localhost, or an address on this machine only (127.x.x.x, ::1, and 127.x.x.x written as IPv6)."""
+    if name == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(name.strip("[]"))
+    except ValueError:
+        return False
+    return ip.is_loopback or bool(getattr(ip, "ipv4_mapped", None) and ip.ipv4_mapped.is_loopback)
+
+
+
+class ReportHandler(http.server.SimpleHTTPRequestHandler):
+    """Static files from the report folder. Bound to this machine only, it also refuses requests addressed to any other name:
+    a web page whose own name points at 127.0.0.1 (DNS rebinding) would otherwise read the report from the browser."""
+    def send_head(self):
+        if loopback(self.server.server_address[0]):
+            name = urllib.parse.urlsplit("//" + (self.headers.get("Host") or "")).hostname or ""
+            if not loopback(name):
+                self.send_error(421, "this report is served to localhost only")
+                return None
+        return super().send_head()
+
+    def log_message(self, *args):
+        pass
+
+
 def make_server(cfg, host, port):
     """The report folder over http, for the one case file:// cannot do. Nothing else is exposed."""
     out = N.folder(cfg["report"])
     out.mkdir(parents=True, exist_ok=True)
-    return http.server.ThreadingHTTPServer((host, port), functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(out)))
+    return http.server.ThreadingHTTPServer((host, port), functools.partial(ReportHandler, directory=str(out)))
 
 
 def serve(cfg, host, port):
