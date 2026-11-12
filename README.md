@@ -6,6 +6,13 @@ A self-hosted eval harness for RAG (retrieval-augmented generation: a system tha
 
 Plain Python 3.11 or newer, standard library only. Any system you can ask a question over HTTP is a target, and anything else takes one Python function.
 
+<p>
+<img src="docs/images/report-phone-dashboard.png" alt="The report's front page on a phone: each dataset with its systems ranked, then recent runs" width="300">
+<img src="docs/images/report-phone-run.png" alt="A run page on a phone: the headline scores, then At a glance, a bar of outcomes for each difficulty" width="300">
+</p>
+
+*The demo report on a phone: the front page, and a run page with its outcomes at a glance.*
+
 ## Quick start
 
 **Install.** Nasute uses only Python's standard library, so pipx is the way to install it; there is no Docker image, and none is needed.
@@ -13,6 +20,16 @@ Plain Python 3.11 or newer, standard library only. Any system you can ask a ques
 ```bash
 pipx install nasute                     # or, until it is on PyPI: pipx install git+https://github.com/bobbyely/nasute
 ```
+
+Or run it from a clone, with no install. Then type `python3 -m nasute` wherever this page says `nasute`:
+
+```bash
+git clone https://github.com/bobbyely/nasute && cd nasute
+export PYTHONPATH="$PWD/src"            # lets python3 find the code from any folder
+python3 -m nasute --help
+```
+
+Changing the code? Install it editable in a virtual environment instead (`python3 -m venv .venv && .venv/bin/pip install -e .`); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Try the demo**, with no account and no model. In one terminal start the stand-in system and judge, and in another make a folder set up for it and run:
 

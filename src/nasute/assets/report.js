@@ -848,7 +848,7 @@ function glance(groups, pick) {
 }
 
 function run() {
-  const S = D.summary, P = S.pass_at, cause = new Map(S.causes.questions.map(q => [q.id, q.cause])), worse = new Set(D.worse);
+  const S = D.summary, P = S.pass_at, cause = new Map((S.causes ? S.causes.questions : []).map(q => [q.id, q.cause])), worse = new Set(D.worse);
   const qs = questions(D.rows, cause, worse, S.judge_mode, P);
   const cols = SCORES.filter(m => qs.some(q => q.means[m] != null));
   const open = id => { location.hash = "q-" + encodeURIComponent(id); };   // the question view is the same page, shown for #q-<id>
