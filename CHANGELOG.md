@@ -2,6 +2,14 @@
 
 ## 0.2.0 (unreleased)
 
+- **Judged scores from 0.2.0 are not directly comparable with 0.1.0 runs.** The built-in judge prompts are now fenced:
+  `[judge] fence = true` (the default) puts the answer first, between `<<<ANSWER` and `ANSWER>>>` lines, and the
+  question, reference and extracts after it, so an answer that forges a `REFERENCE:` or `EXTRACTS:` line cannot pass it
+  off as the trusted one. Both markers are taken out of every answer before judging, with custom prompts too. Changed:
+  `quick`, `abstain`, `knowledge` and `knowledge_abstain`; `split` and `check` are as before. Set `fence = false` for
+  exactly the 0.1.0 prompts, to compare with old runs. Runs and judge-checks record `fence` in `judge_prompts`; compare
+  and the report say "fenced (default)" or "unfenced", and mark judged scores "not comparable" across the two. The
+  measurements are in `docs/reference/judge-prompts.md`.
 - Judge prompts can be changed from the settings: `[judge.prompts]` names a text file per prompt (`quick`, `split`,
   `check`, `knowledge`, `knowledge_abstain`, `abstain`). Each file is checked when the settings load: readable UTF-8,
   and exactly the placeholders of the built-in prompt it replaces (a literal brace is `{{` or `}}`). The reply shapes,

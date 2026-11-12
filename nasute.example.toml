@@ -121,6 +121,12 @@ retries = 2
 headers = {}
 # Judge requests at once. 1 suits a local judge; a hosted one can take more (match concurrency, say).
 concurrency = 1
+# true: the built-in prompts put the answer first, between <<<ANSWER and ANSWER>>> markers, and the trusted
+# reference and extracts after it, so an answer holding a line such as "REFERENCE: ..." cannot pass as one.
+# The markers are taken out of every answer before judging, so an answer cannot close the fence early.
+# false: the 0.1.0 prompts, unchanged, to compare with runs from 0.1.0. A changed fence makes marked scores
+# not comparable, as a different judge model would.
+fence = true
 
 # Your own wording for a judge prompt: a text file per prompt, relative to this file. A prompt not named keeps
 # the built-in text. Names: quick, split, check, knowledge, knowledge_abstain, abstain. Start from the real text

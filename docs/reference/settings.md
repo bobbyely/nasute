@@ -73,7 +73,10 @@ The `[judge]` table configures the model that marks the answers. It is kept sepa
 | `retries` | `2` |
 | `headers` | `{}` |
 | `concurrency` | `1` (judge requests at once; a hosted judge can take more) |
+| `fence` | `true` (the built-in prompts fence the answer off; `false` is the 0.1.0 prompts) |
 | `prompts` | `{}` (every judge prompt is the built-in one) |
+
+**`fence`.** An answer is text from the system under test, so it can hold lines that look like the judge's trusted fields, such as `REFERENCE: ...`. With `fence = true` the built-in `quick`, `abstain`, `knowledge` and `knowledge_abstain` prompts put the answer first, between a `<<<ANSWER` line and an `ANSWER>>>` line, and the question, reference and extracts after it. Before any answer goes into any prompt, built-in or custom, Nasute takes both markers out of it, so an answer cannot close the fence early. `split` and `check` (claims mode) are the same either way; only the markers are taken out. With `fence = false` every built-in prompt is the 0.1.0 text and answers go in unchanged: use it to compare with runs from 0.1.0. Runs record the setting, and a run with the other setting has its judged scores marked "not comparable". The prompts and the numbers behind them: [judge prompts](judge-prompts.md).
 
 ### `[judge.prompts]`
 
