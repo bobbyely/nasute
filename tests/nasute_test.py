@@ -1625,6 +1625,22 @@ def docs_checks():
         assert f"`{key}`" in settings, f"settings.md does not mention {key}"
 
 
+def demo_judge_checks():
+    """The demo server's stand-in judge reads both prompt layouts, so the quick start's scores stay right when prompts change."""
+    import string
+    from nasute import demo_server
+
+    def fill(template, **known):
+        return template.format(**{f: known.get(f, "") for _, f, _, _ in string.Formatter().parse(template) if f})
+    for fenced in (True, False):
+        quick = nasute.FENCED_QUICK_ASK if fenced else nasute.QUICK_ASK
+        abstain = nasute.FENCED_ABSTAIN_ASK if fenced else nasute.ABSTAIN_ASK
+        right = demo_server.judge(fill(quick, question="Capital of France?", reference="Paris", extracts="[1] Paris is the capital.", answer="Paris is the capital of France."))
+        assert right["claims"] and right["claims"][0]["vs_reference"] == "agrees" and right["claims"][0]["supported"] == "yes", (fenced, right)
+        declined = demo_server.judge(fill(abstain, question="Who signed the Treaty of Nowhere?", answer="I don't know of that treaty."))
+        assert declined["verdict"] == "declined", (fenced, declined)
+
+
 def fence_checks():
     """[judge] fence: fenced by default, the 0.1.0 texts when off, markers stripped from answers, recorded and flagged by compare."""
     on = nasute.load_settings(Path("/nonexistent/none.toml"))
@@ -2225,6 +2241,7 @@ def main():
     logging_checks()
     init_demo_checks()
     security_checks()
+    demo_judge_checks()
     print("nasute checks passed")
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nasute"
-version = "0.1.0"
+version = "0.2.0"
 description = "Test AI systems with known-answer questions: a yes/no judge, error bars, and a static report."
 readme = "README.md"
 license = "MIT"

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (12 November 2026)
 
 - **Judged scores from 0.2.0 are not directly comparable with 0.1.0 runs.** The built-in judge prompts are now fenced:
   `[judge] fence = true` (the default) puts the answer first, between `<<<ANSWER` and `ANSWER>>>` lines, and the
