@@ -21,7 +21,3 @@ workers = 1        # one question at a time
 ---
 
 ← [Previous](export-a-run.md) · [Next](use-a-cloud-judge.md) →
-
----
-
-← [Previous](export-a-run.md) · [Next](use-a-cloud-judge.md) →

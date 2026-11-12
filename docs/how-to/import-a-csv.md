@@ -37,7 +37,3 @@ Afterwards, `nasute dataset list` shows the versions and question counts.
 ---
 
 ← [Previous](write-a-dataset.md) · [Next](tag-questions.md) →
-
----
-
-← [Previous](write-a-dataset.md) · [Next](tag-questions.md) →

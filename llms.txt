@@ -1,0 +1,51 @@
+# Nasute
+
+> A self-hosted eval harness for RAG and LLM systems. It asks a system questions with known answers, has a judge model say yes or no about single claims in each answer, counts the yeses in code, and reports every score with a 95% range. It compares runs question by question and writes a static HTML report. Python 3.11+, standard library only.
+
+The full settings file, with every setting explained, is `nasute.example.toml`. Score names and formulas come from `GLOSSARY` in `src/nasute/__init__.py`. Agents changing the code should read `AGENTS.md` first.
+
+## Start
+
+- [Start here](docs/README.md): what Nasute is for, and a run in 30 seconds
+- [Quick start](docs/tutorial.md): test your own endpoint in 5 minutes, with no account and no model
+- [How Nasute works](docs/how-nasute-works.md): the pieces, a run's journey, reading the report, what to trust
+
+## How-to guides
+
+- [Add a target](docs/how-to/add-a-target.md): an HTTP endpoint or a Python function
+- [Write and version a dataset](docs/how-to/write-a-dataset.md)
+- [Import questions from a CSV](docs/how-to/import-a-csv.md)
+- [Tag questions and set difficulty](docs/how-to/tag-questions.md)
+- [Use profiles](docs/how-to/use-profiles.md)
+- [Compare runs](docs/how-to/compare-runs.md)
+- [Baselines and labels](docs/how-to/baselines-and-labels.md)
+- [Read a run page](docs/how-to/read-a-run-page.md)
+- [Export a run](docs/how-to/export-a-run.md)
+- [Run overnight](docs/how-to/run-overnight.md)
+- [Use a cloud judge](docs/how-to/use-a-cloud-judge.md)
+- [Check the judge](docs/how-to/judge-check.md)
+
+## Reference
+
+- [Commands](docs/reference/commands.md): every command and option
+- [Settings](docs/reference/settings.md): every setting and its default
+- [Scores](docs/reference/scores.md): every score, with its formula
+- [Judge prompts](docs/reference/judge-prompts.md): the exact words sent to the judge
+- [File formats](docs/reference/file-formats.md): datasets, runs and summaries
+- [Data layout](docs/reference/data-layout.md): folders, and the vendored chart libraries
+
+## Explanation
+
+- [The statistics](docs/explanation/statistics.md): error bars and paired compare (Miller 2024)
+- [Why the judge says yes or no](docs/explanation/why-the-judge-says-yes-or-no.md)
+- [How errors count](docs/explanation/how-errors-count.md)
+- [Independence](docs/explanation/independence.md): keeping questions from influencing each other
+- [The judge-check](docs/explanation/the-judge-check.md)
+- [Limits](docs/explanation/limits.md)
+
+## Optional
+
+- [Examples](examples/): settings for an OpenAI-compatible API and for Ollama
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)

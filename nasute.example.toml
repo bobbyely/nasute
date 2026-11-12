@@ -1,4 +1,4 @@
-# Settings for nasute.py. Copy to nasute.toml and change what you need.
+# Settings for nasute. Copy to nasute.toml and change what you need.
 # Every setting has a default in the code, so this file is optional.
 
 # Folders holding datasets/<name>/v<N>.jsonl. Relative folders start from this file's folder.
@@ -56,7 +56,7 @@ mislabel_hard_above = 0.9
 # a warning says so when repeats is above 1. Each repeat also sends its own seed (its number: 1, 2, 3).
 temperature = 0.0
 
-# Seconds to wait after every call to the system and every judge call. Spares shared hardware: the box's
+# Seconds to wait after every call to the system and every judge call. Spares shared hardware: a local
 # language model runs flat out otherwise, and the processor gets hot.
 pause = 0
 
@@ -131,7 +131,7 @@ tokens_out = ""
 cost = ""
 # timeout = 60   # seconds; the global timeout is used if this is not set
 
-# Profiles: a table of any of the settings above, merged over them by `nasute.py run --profile NAME`.
+# Profiles: a table of any of the settings above, merged over them by `nasute run --profile NAME`.
 # Options on the command line (--limit, --repeats, --mode) still win.
 
 # "Did I break anything?" after a change. A few minutes.

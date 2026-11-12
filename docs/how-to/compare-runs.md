@@ -31,7 +31,3 @@ To compare the same system before and after a change, run it twice and use `nasu
 ---
 
 ← [Previous](use-profiles.md) · [Next](baselines-and-labels.md) →
-
----
-
-← [Previous](use-profiles.md) · [Next](baselines-and-labels.md) →

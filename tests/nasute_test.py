@@ -1555,6 +1555,14 @@ def main():
         assert key in example, f"{key} missing from nasute.example.toml"
         if isinstance(value, dict):
             assert value.keys() <= example[key].keys(), key
+    # examples/: each loads, and uses only settings the code knows, so a typo there cannot mislead a reader
+    for p in sorted((ROOT / "examples").glob("*.toml")):
+        cfg = nasute.load_settings(p)
+        ex = tomllib.loads(p.read_text())
+        assert ex.keys() <= nasute.DEFAULTS.keys() and ex["judge"].keys() <= nasute.DEFAULTS["judge"].keys(), p.name
+        assert cfg["judge"]["mode"] in ("quick", "claims", "knowledge"), p.name
+        for t in ex["targets"].values():
+            assert t.keys() <= example["targets"]["web"].keys() | {"label", "model_url"}, (p.name, t.keys() - example["targets"]["web"].keys())
 
     # the seed dataset is well formed and its fingerprint follows the file
     path, version = nasute.find_dataset(nasute.DEFAULTS, "demo")

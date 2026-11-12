@@ -31,7 +31,12 @@ All of it is in [docs/](docs/README.md): a [Quick start](docs/tutorial.md), [How
 | `src/nasute/assets/` | The report page script and style, and three vendored libraries (MIT, each with its licence file): uPlot 1.6.32, Chart.js 4.5.1 and @sgratzl/chartjs-chart-boxplot 4.4.5. Versions and SHA-256 are in [data layout](docs/reference/data-layout.md). |
 | `src/nasute/starter/` | What `nasute init` copies out. |
 | `nasute.example.toml` | Every setting, explained. |
+| `examples/` | Ready settings for a model behind an OpenAI-compatible API, and for one run locally by Ollama. |
 | `tests/nasute_test.py` | Checks, with made-up data: `python3 tests/nasute_test.py`. No network, no model, no install. |
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Licence
 

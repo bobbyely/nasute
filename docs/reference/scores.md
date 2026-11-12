@@ -2,7 +2,7 @@
 
 # Reference: scores
 
-This page lists every score Nasute reports, together with its formula, and it is meant for the moment when you see a number and want to know exactly how it was worked out. The names, meanings and formulas below are the `GLOSSARY` in `nasute.py`, word for word, and the report shows the same text, so a test fails if this page and the code drift apart.
+This page lists every score Nasute reports, together with its formula, and it is meant for the moment when you see a number and want to know exactly how it was worked out. The names, meanings and formulas below are the `GLOSSARY` in `src/nasute/__init__.py`, word for word, and the report shows the same text, so a test fails if this page and the code drift apart.
 
 Scores run from 0 to 1, and higher is better except for Error rate. A run's average gives every scored attempt equal weight. A comparison between two runs gives every shared question's mean equal weight. Every score comes with a 95% interval once at least one question is scored: the normal interval when the scores vary, a Wilson interval (counting questions) when they do not or when there is a single attempt. See [the statistics](../explanation/statistics.md). "@k" is the setting `k` (default 5): Hit rate@5 counts the top 5 sources.
 
@@ -59,14 +59,6 @@ Some formulas divide by a count that can be zero, for example when an answer mak
 - **No expected sources on the question:** Hit rate@k, Recall@k and MRR are not measured for it. If the question lists sources and the target returns none, they are 0.
 
 How the judge's yes and no answers become these numbers is in [why the judge says yes or no](../explanation/why-the-judge-says-yes-or-no.md). The exact wording sent to the judge is in [judge prompts](judge-prompts.md).
-
----
-
-← [Previous](settings.md) · [Next](file-formats.md) →
-
----
-
-← [Previous](settings.md) · [Next](file-formats.md) →
 
 ---
 

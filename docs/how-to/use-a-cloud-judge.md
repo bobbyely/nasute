@@ -28,7 +28,3 @@ A few things are worth knowing before you switch.
 ---
 
 ← [Previous](run-overnight.md) · [Next](judge-check.md) →
-
----
-
-← [Previous](run-overnight.md) · [Next](judge-check.md) →

@@ -1,5 +1,5 @@
 # Your Nasute settings. Written by `nasute init`. Every option is explained in nasute.example.toml
-# (in the folder that holds nasute.py). Run nasute from this folder and it finds this file.
+# (in the Nasute repo). Run nasute from this folder and it finds this file.
 
 datasets = ["datasets"]   # folders of datasets/<name>/v<N>.jsonl
 runs = "runs"             # where each run is saved

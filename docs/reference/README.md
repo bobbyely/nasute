@@ -14,11 +14,3 @@ These pages hold exact facts that you look up when you already know what you are
 ---
 
 ← [Previous](../how-to/judge-check.md) · [Next](commands.md) →
-
----
-
-← [Previous](../how-to/judge-check.md) · [Next](commands.md) →
-
----
-
-← [Previous](../how-to/judge-check.md) · [Next](commands.md) →

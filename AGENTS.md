@@ -19,6 +19,8 @@ Plain Python 3.11+, standard library only. No runtime dependencies: keep it so.
 | `src/nasute/targets/http.py` | The generic target: any JSON endpoint, paths `$.a[0].b`. |
 | `src/nasute/datasets/<name>/v<N>.jsonl` | Questions. Header line first. `demo` is ten questions about a made-up handbook (`demo/handbook.md`); `judge-demo` is answers with known faults, to test the judge. Both are used by the tests. |
 | `nasute.example.toml` | Every setting explained. |
+| `examples/` | Settings for an OpenAI-compatible API and for Ollama. The test checks each uses only real settings. |
+| `llms.txt` | An index of the docs for language models. Added a page to `docs/`? Add it here too. |
 | `docs/` | The manual, Diátaxis style: quick start, how it works, how-to, reference, explanation. |
 | `tests/nasute_test.py` | Checks. Fake data, no network, no model, no install. Also checks `docs/`: links, commands, scores, prompts, settings. |
 

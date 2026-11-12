@@ -17,7 +17,3 @@ Nasute also measures difficulty itself, so that you can tell when a label is wro
 ---
 
 ← [Previous](import-a-csv.md) · [Next](use-profiles.md) →
-
----
-
-← [Previous](import-a-csv.md) · [Next](use-profiles.md) →

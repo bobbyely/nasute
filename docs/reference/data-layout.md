@@ -51,11 +51,3 @@ File contents are in [file formats](file-formats.md).
 ---
 
 ← [Previous](file-formats.md) · [Next](judge-prompts.md) →
-
----
-
-← [Previous](file-formats.md) · [Next](judge-prompts.md) →
-
----
-
-← [Previous](file-formats.md) · [Next](judge-prompts.md) →

@@ -1,0 +1,26 @@
+# Nasute settings for a model behind any OpenAI-compatible API (a hosted service, vLLM, llama.cpp's server).
+# Copy to nasute.toml in a folder made by `nasute init`, then change the addresses and model names.
+# Keys never sit in this file: each "env:NAME" is read from that environment variable, for example
+#   export MY_API_KEY="Bearer sk-..."
+# Every other setting is explained in nasute.example.toml.
+
+dataset = "example"
+workers = 4   # a hosted API takes several requests at once; use 1 for a single local model
+
+[judge]
+url = "https://api.example.com/v1"
+model = "judge-model-name"
+headers = { Authorization = "env:MY_API_KEY" }
+# "knowledge": for a plain chat model that cites no sources. Use "quick" or "claims" for a system that does.
+mode = "knowledge"
+
+[targets.mine]   # "mine" matches the example dataset `nasute init` writes
+kind = "http"
+label = "Chat model"
+url = "https://api.example.com/v1/chat/completions"
+headers = { Authorization = "env:MY_API_KEY" }
+request = { model = "model-under-test", messages = [{ role = "user", content = "{question}" }] }
+answer = "$.choices[0].message.content"
+# The reply's usage figures, recorded with each answer and totalled per run.
+tokens_in = "$.usage.prompt_tokens"
+tokens_out = "$.usage.completion_tokens"

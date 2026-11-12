@@ -48,7 +48,3 @@ A small dataset gives wide ranges. The "power" line on a suite page says how man
 ---
 
 ← [Previous](add-a-target.md) · [Next](import-a-csv.md) →
-
----
-
-← [Previous](add-a-target.md) · [Next](import-a-csv.md) →

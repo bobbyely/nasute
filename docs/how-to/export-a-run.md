@@ -33,7 +33,3 @@ The files are UTF-8 with a header row. If an answer or question starts with `=`,
 ---
 
 ← [Previous](read-a-run-page.md) · [Next](run-overnight.md) →
-
----
-
-← [Previous](read-a-run-page.md) · [Next](run-overnight.md) →

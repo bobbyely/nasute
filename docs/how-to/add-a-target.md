@@ -61,7 +61,3 @@ If the answer is missing, the run page names the system error.
 ---
 
 ← [Previous](README.md) · [Next](write-a-dataset.md) →
-
----
-
-← [Previous](README.md) · [Next](write-a-dataset.md) →

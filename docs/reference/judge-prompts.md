@@ -2,7 +2,7 @@
 
 # Reference: judge prompts
 
-This page shows the exact words Nasute sends to the judge, which is useful when you want to judge the judge, adapt the prompts, or understand why a mark came out as it did. The text is copied from `nasute.py`, and a test fails if this page and the code drift apart. The braces, such as `{question}`, are filled in for each answer.
+This page shows the exact words Nasute sends to the judge, which is useful when you want to judge the judge, adapt the prompts, or understand why a mark came out as it did. The text is copied from `src/nasute/__init__.py`, and a test fails if this page and the code drift apart. The braces, such as `{question}`, are filled in for each answer.
 
 The reply is forced into a JSON shape, so the judge can only say yes or no (or the few fixed words each prompt names) plus a few words of reason, and the code checks every reply against that shape and rejects anything else, such as a made-up verdict. When facts are checked against the reference or against the answer, the question goes along with them as `QUESTION: ... REFERENCE ANSWER: ...`, so that a bare "Canberra" is read in context.
 
@@ -91,14 +91,6 @@ The library holds no answer to this QUESTION, so a good reply says so. Did the A
 QUESTION: {question}
 ANSWER: {answer}
 ```
-
----
-
-← [Previous](data-layout.md) · [Next](../explanation/README.md) →
-
----
-
-← [Previous](data-layout.md) · [Next](../explanation/README.md) →
 
 ---
 

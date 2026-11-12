@@ -105,11 +105,3 @@ A profile lets you keep several named bundles of settings in one file. It is a t
 ---
 
 ← [Previous](commands.md) · [Next](scores.md) →
-
----
-
-← [Previous](commands.md) · [Next](scores.md) →
-
----
-
-← [Previous](commands.md) · [Next](scores.md) →

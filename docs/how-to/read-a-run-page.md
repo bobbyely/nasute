@@ -49,7 +49,3 @@ The causes are `retrieval` (the right article was not found), `generation` (it w
 ---
 
 ← [Previous](baselines-and-labels.md) · [Next](export-a-run.md) →
-
----
-
-← [Previous](baselines-and-labels.md) · [Next](export-a-run.md) →

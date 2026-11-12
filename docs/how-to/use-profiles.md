@@ -36,7 +36,3 @@ The order in which all settings are applied is in [settings](../reference/settin
 ---
 
 ← [Previous](tag-questions.md) · [Next](compare-runs.md) →
-
----
-
-← [Previous](tag-questions.md) · [Next](compare-runs.md) →

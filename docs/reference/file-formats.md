@@ -136,11 +136,3 @@ An empty score cell means the score was not measured for that attempt.
 ---
 
 ← [Previous](scores.md) · [Next](data-layout.md) →
-
----
-
-← [Previous](scores.md) · [Next](data-layout.md) →
-
----
-
-← [Previous](scores.md) · [Next](data-layout.md) →

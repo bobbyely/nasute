@@ -20,7 +20,3 @@ These guides each cover one job, and they assume you have already worked through
 ---
 
 ← [Previous](../how-nasute-works.md) · [Next](add-a-target.md) →
-
----
-
-← [Previous](../how-nasute-works.md) · [Next](add-a-target.md) →

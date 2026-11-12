@@ -24,7 +24,3 @@ The suite page marks the baseline and shows each score's change against it.
 ---
 
 ← [Previous](compare-runs.md) · [Next](read-a-run-page.md) →
-
----
-
-← [Previous](compare-runs.md) · [Next](read-a-run-page.md) →

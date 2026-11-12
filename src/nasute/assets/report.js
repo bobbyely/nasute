@@ -219,7 +219,7 @@ const metricCol = (m, get, k, bar) => ({ t: name(m, k), desc: m !== "error_rate"
 
 function overview() {
   add(crumbs(), h("h1", { text: "Nasute" }), h("p", { class: "lede", text: "Each row is one set of questions tested on one system, with all its runs. Click a heading to sort, a run count to see its runs. Scores run from 0 (bad) to 1 (perfect)." }));
-  if (!D.suites.length) { add(h("p", { class: "empty", text: "No runs yet. Start one with: python3 nasute.py run --profile smoke" })); finish(); return; }
+  if (!D.suites.length) { add(h("p", { class: "empty", text: "No runs yet. Start one with: nasute run --profile smoke" })); finish(); return; }
   const last = s => s.runs[s.runs.length - 1];
   // shortcut: the trend is the sparkline of the answer-correctness means, nothing more (no paired test here; the suite page has the real one).
   const cols = [
@@ -561,7 +561,7 @@ function suite() {
     more("By topic and difficulty", groupTable(latest.tags, "Topic"), h("div", { class: "gap" }), groupTable(latest.difficulty || {}, "Difficulty")),
     D.mislabels.length ? more(`${plural(D.mislabels.length, "question")} may be mislabelled`, h("ul", { class: "plain" }, D.mislabels.map(x => h("li", {}, h("b", { text: x.id }), ` labelled ${x.label}, but answered well ${x.passed} of ${x.attempts} times`)))) : null,
     h("p", { class: "small", text: `System: ${S.target_label || S.target}, model ${lr.answering_model}. Judge: ${lr.judge_model}.` }),
-    jc ? null : h("p", { class: "small", text: "No judge check yet for this marker and mode. Run: python3 nasute.py judge-check" }));
+    jc ? null : h("p", { class: "small", text: "No judge check yet for this marker and mode. Run: nasute judge-check" }));
   finish();
 }
 

@@ -151,7 +151,3 @@ When you are ready to move beyond the stand-in, these pages cover the next steps
 ---
 
 ← [Previous](README.md) · [Next](how-nasute-works.md) →
-
----
-
-← [Previous](README.md) · [Next](how-nasute-works.md) →

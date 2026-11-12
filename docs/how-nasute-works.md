@@ -106,7 +106,3 @@ Where Nasute falls short is listed in [limits](explanation/limits.md).
 ---
 
 ← [Previous](tutorial.md) · [Next](how-to/README.md) →
-
----
-
-← [Previous](tutorial.md) · [Next](how-to/README.md) →
