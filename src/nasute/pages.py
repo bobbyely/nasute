@@ -148,7 +148,7 @@ def judge_lines(cfg, sums, run_folder):
         if s.get("judge_model"):
             p = s.get("judge_prompts")
             j = judges.setdefault((s["judge_model"], s.get("judge_mode") or "quick", json.dumps(p, sort_keys=True)),
-                                  {"model": s["judge_model"], "mode": s.get("judge_mode") or "quick", "prompts": p, "custom": (p or {}).get("custom", []), "runs": 0})
+                                  {"model": s["judge_model"], "mode": s.get("judge_mode") or "quick", "prompts": p, "custom": (p or {}).get("custom", []), "fence": bool((p or {}).get("fence")), "runs": 0})
             j.update(runs=j["runs"] + 1, last_run=run_id, folder=run_folder.get(run_id))
     return [{**{k: v for k, v in j.items() if k != "prompts"}, "check": N.latest_judge_check(cfg, j["model"], j["mode"], j["prompts"], full=True)} for j in judges.values()]
 

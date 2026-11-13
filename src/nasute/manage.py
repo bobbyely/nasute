@@ -56,11 +56,11 @@ def init(folder, demo=False):
         "  nasute report      (then open report/index.html)")
 
 
-def prompts_export(folder):
-    """Write the six built-in judge prompts as <name>.txt in `folder`, to edit and name in [judge.prompts]. Never overwrites:
+def prompts_export(folder, prompts):
+    """Write the six built-in judge prompts (`prompts`: the set [judge] fence picks) as <name>.txt in `folder`, to edit and name in [judge.prompts]. Never overwrites:
     if any file is there, nothing is written. A separate command, not an init flag, as a user with settings already wants only these."""
     folder = Path(folder)
-    files = {folder / f"{name}.txt": text for name, text in N.PROMPTS.items()}
+    files = {folder / f"{name}.txt": text for name, text in prompts.items()}
     taken = [str(f) for f in files if f.exists()]
     if taken:
         say("Nothing written: these files already exist: " + ", ".join(taken))
@@ -301,8 +301,7 @@ def runs_show(cfg, text):
     meta = N.run_meta(cfg)
     say(f"{run_id}  ({when(run_id)} UTC)  suite {s['dataset']['name']} × {s.get('target', '?')}"
         + (f"  \"{meta['labels'][run_id]}\"" if run_id in meta["labels"] else "") + ("  [BASELINE]" if meta["baselines"].get(N.suite_of(s)) == run_id else ""))
-    custom = (s.get("judge_prompts") or {}).get("custom")
-    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}{', custom judge prompts: ' + ', '.join(custom) if custom else ''}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
+    say(f"{s.get('profile') or 'no profile'}, {s['judge_mode']} judge ({s.get('judge_model')}{', judge prompts: ' + N.prompts_label(s.get('judge_prompts'))}), {s['repeats']} repeat(s), questions {s['dataset']['name']} v{N.vtext(s['dataset']['version'])}")
     say(s["counts_line"] + (f"\nSTOPPED EARLY: {s['aborted']}" if s.get("aborted") else "") + ("\nINCOMPLETE: too many judge errors" if s.get("incomplete") else ""))
     say("\n".join(N.describe(s)))
     if any(s["causes"]["counts"].values()):

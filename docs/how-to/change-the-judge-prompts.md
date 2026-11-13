@@ -16,7 +16,7 @@ You can change the words, not the shape of the reply. The JSON shape the judge m
 nasute prompts export prompts
 ```
 
-This writes the six built-in prompts into the folder `prompts`: `quick.txt`, `split.txt`, `check.txt`, `knowledge.txt`, `knowledge_abstain.txt` and `abstain.txt`. It never overwrites a file. Which prompt is used when is in [judge prompts](../reference/judge-prompts.md).
+This writes the six built-in prompts into the folder `prompts`: `quick.txt`, `split.txt`, `check.txt`, `knowledge.txt`, `knowledge_abstain.txt` and `abstain.txt`. It writes the set your settings pick: the fenced prompts, or the 0.1.0 ones if `[judge] fence = false`. It never overwrites a file. Which prompt is used when is in [judge prompts](../reference/judge-prompts.md).
 
 ## 2. Edit the ones you want
 
@@ -31,7 +31,7 @@ Add a `[judge.prompts]` table to `nasute.toml`, with one line per changed prompt
 quick = "prompts/quick.txt"
 ```
 
-Prompts you leave out keep the built-in text. Nasute checks each file when it loads the settings. A missing placeholder, an unknown one or a single brace stops it with an error that names the file.
+Prompts you leave out keep the built-in text. Nasute checks each file when it loads the settings. With `fence = true` (the default), Nasute takes the markers `<<<ANSWER` and `ANSWER>>>` out of every answer before it fills your prompt too, so you can fence the answer with them in your own wording and an answer cannot close the fence early. A missing placeholder, an unknown one or a single brace stops it with an error that names the file.
 
 ## 4. Check the changed prompt
 

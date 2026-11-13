@@ -23,12 +23,19 @@ def field(prompt, name, stop):
     return m.group(1).strip() if m else ""
 
 
+def answer_of(prompt):
+    """The answer: between the fence markers (fenced prompts, the default), else after `ANSWER:` (fence = false)."""
+    m = re.search(r"<<<ANSWER\n(.*?)\nANSWER>>>", prompt, re.S)
+    return m.group(1).strip() if m else field(prompt, "ANSWER", "XXXX|QUESTION|REFERENCE|EXTRACTS")
+
+
 def judge(prompt):
     """A reply in the shape Nasute's judge prompts ask for."""
     if "holds no answer" in prompt:
-        answer = field(prompt, "ANSWER", "XXXX")
+        answer = answer_of(prompt)
         return {"verdict": "declined" if "don't know" in answer.lower() else "made_something_up", "why": "looked for 'don't know'"}
-    answer, reference, extracts = (field(prompt, n, "QUESTION|REFERENCE|EXTRACTS|ANSWER") for n in ("ANSWER", "REFERENCE", "EXTRACTS"))
+    reference, extracts = (field(prompt, n, "QUESTION|REFERENCE|EXTRACTS|ANSWER") for n in ("REFERENCE", "EXTRACTS"))
+    answer = answer_of(prompt)
     agrees = reference.lower() in answer.lower()
     claims = [{"claim": answer, "supported": "yes" if reference.lower() in extracts.lower() else "no",
                "vs_reference": "agrees" if agrees else "contradicts", "why": "word match"}] if answer and "don't know" not in answer.lower() else []

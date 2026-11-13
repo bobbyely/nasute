@@ -30,6 +30,7 @@ Named after the nasute, the soldier termite that guards the colony: Nasute guard
 - **Error bars and honest compares.** Every score has a 95% range. Comparing two runs says "real gain", "real drop" or "within noise" ([statistics](docs/explanation/statistics.md)).
 - **Honesty on unanswerable questions.** Ask about made-up names, and Nasute scores whether the system says it doesn't know or makes something up.
 - **A check on the judge.** `judge-check` marks hand-labelled answers with known faults, and reports how often the judge gets them right ([check the judge](docs/how-to/judge-check.md)).
+- **Fenced judge prompts.** The answer goes to the judge first, between markers, with the trusted reference after it, so an answer that forges a `REFERENCE:` line does not fool the judge. On by default; `[judge] fence = false` gives the 0.1.0 prompts ([why](docs/reference/judge-prompts.md#the-fence)).
 - **Custom judge prompts.** The built-in prompts are the default. Replace any one with a text file named in `[judge.prompts]` ([how](docs/how-to/change-the-judge-prompts.md)).
 - **Retrieval scores, when your system cites sources.** Hit rate, recall, MRR and faithfulness to the text it read. Left out when a system names no sources.
 - **Tags and difficulty.** Scores by topic, and by easy, medium and hard ([tag questions](docs/how-to/tag-questions.md)).
